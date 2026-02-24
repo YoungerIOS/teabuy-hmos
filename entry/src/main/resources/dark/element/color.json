@@ -1,0 +1,100 @@
+{
+  "color": [
+    {
+      "name": "start_window_background",
+      "value": "#000000"
+    },
+    {
+      "name": "brand_primary",
+      "value": "#4D716F"
+    },
+    {
+      "name": "brand_secondary",
+      "value": "#97C9C0"
+    },
+    {
+      "name": "brand_accent",
+      "value": "#5DAA8B"
+    },
+    {
+      "name": "brand_halo",
+      "value": "#6AA889"
+    },
+    {
+      "name": "hero_card_background",
+      "value": "#7FAFA2"
+    },
+    {
+      "name": "review_card_a",
+      "value": "#82948E"
+    },
+    {
+      "name": "review_card_b",
+      "value": "#6E8680"
+    },
+    {
+      "name": "new_tea_card_background",
+      "value": "#739A8F"
+    },
+    {
+      "name": "promo_card_background",
+      "value": "#86A49A"
+    },
+    {
+      "name": "category_active_background",
+      "value": "#D9EFE5"
+    },
+    {
+      "name": "category_background",
+      "value": "#E7F1EC"
+    },
+    {
+      "name": "category_text",
+      "value": "#6F7D77"
+    },
+    {
+      "name": "indicator_active",
+      "value": "#3D5E42"
+    },
+    {
+      "name": "indicator_inactive",
+      "value": "#555555"
+    },
+    {
+      "name": "page_background",
+      "value": "#F2F7F0"
+    },
+    {
+      "name": "card_background",
+      "value": "#FFFFFF"
+    },
+    {
+      "name": "text_primary",
+      "value": "#333333"
+    },
+    {
+      "name": "text_secondary",
+      "value": "#666666"
+    },
+    {
+      "name": "text_tertiary",
+      "value": "#999999"
+    },
+    {
+      "name": "nav_text_inactive",
+      "value": "#C7C7C7"
+    },
+    {
+      "name": "black",
+      "value": "#000000"
+    },
+    {
+      "name": "transparent",
+      "value": "#00000000"
+    },
+    {
+      "name": "danger",
+      "value": "#D85E53"
+    }
+  ]
+}
