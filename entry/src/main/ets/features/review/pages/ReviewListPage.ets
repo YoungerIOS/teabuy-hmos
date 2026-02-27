@@ -1,5 +1,6 @@
 import { AppRoute } from '../../../router/RouteMap';
 import { NavService } from '../../../router/NavService';
+import { Colors } from '../../../core/ui/theme/Tokens';
 
 class ReviewTimelineItem {
   title: string = '';
@@ -164,7 +165,7 @@ export struct ReviewListPage {
         Row() {
           Text('‹')
             .fontSize(28)
-            .fontColor('#FFFFFF');
+            .fontColor(Colors.cardBackground);
         }
         .width(44)
         .height(44)
@@ -177,7 +178,7 @@ export struct ReviewListPage {
         Blank();
         Text(`茶评/${this.teaName}`)
           .fontSize(20)
-          .fontColor('#FFFFFF')
+          .fontColor(Colors.cardBackground)
           .fontWeight(FontWeight.Medium);
         Blank();
         Row().width(44).height(44);

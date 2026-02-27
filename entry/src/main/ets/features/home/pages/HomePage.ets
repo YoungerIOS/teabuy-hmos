@@ -1,7 +1,7 @@
 import { Colors } from '../../../core/ui/theme/Tokens';
 import { AppRoute } from '../../../router/RouteMap';
 import { NavService } from '../../../router/NavService';
-import { window } from '@kit.ArkUI';
+import { window, promptAction } from '@kit.ArkUI';
 import { ApiConfig } from '../../../core/network/ApiConfig';
 import {
   HomeBannerData,
@@ -13,12 +13,17 @@ import {
   HomeModuleData,
   HomeNewTeaItemData,
   HomeRepository,
-  HomeReviewTopicData
+  HomeReviewTopicData,
+  FeaturedListCard
 } from '../data/HomeRepository';
 import { AuthRepository } from '../../auth/data/AuthRepository';
 import { UserStore } from '../../../core/store/UserStore';
 import { ReviewListPage } from '../../review/pages/ReviewListPage';
-
+import { BannerCarousel } from '../../../core/ui/components/BannerCarousel';
+import { FilterPage } from '../../filter/pages/FilterPage';
+import { CartPage } from '../../cart/pages/CartPage';
+import { CartItem } from '../../cart/data/CartRepository';
+import { CheckoutPage } from '../../order/pages/CheckoutPage';
 class ReviewTopic {
   title: string = '';
   imageUrl: string = '';
@@ -31,42 +36,35 @@ class NewTeaItem {
   wantsText: string = '';
 }
 
-class FeaturedTab {
-  key: string = '';
-  title: string = '';
-  sort: number = 0;
+export interface FeaturedTab {
+  key: string;
+  title: string;
+  sort: number;
 }
 
-class FeaturedListCard {
-  name: string = '';
-  subtitle: string = '';
-  marketingText: string = '';
-  soldCountText: string = '';
-  badgePrimary: string = '';
-  badgeSecondary: string = '';
-  priceText: string = '';
-  imageUrl: string = '';
-  linkValue: string = '';
-  sort: number = 0;
+
+
+export interface FeaturedItem {
+  id?: string;
+  title: string;
+  subtitle?: string;
+  imageUrl: string;
+  price?: string;
+  priceText?: string;
+  tag?: string;
+  linkType?: string;
+  linkValue: string;
+  sort: number;
+  cards?: FeaturedListCard[];
 }
 
-class FeaturedItem {
-  title: string = '';
-  subtitle: string = '';
-  imageUrl: string = '';
-  priceText: string = '';
-  linkValue: string = '';
-  sort: number = 0;
-  cards: FeaturedListCard[] = [];
-}
-
-class FeaturedSection {
-  key: string = '';
-  title: string = '';
-  subtitle: string = '';
-  layout: string = '';
-  sort: number = 0;
-  items: FeaturedItem[] = [];
+export interface FeaturedSection {
+  key: string;
+  title: string;
+  subtitle: string;
+  layout: string;
+  sort: number;
+  items: FeaturedItem[];
 }
 
 @Component
@@ -78,55 +76,10 @@ struct HomeTopSection {
   @Prop featuredTabs: FeaturedTab[] = [];
   @Prop featuredBannerImages: string[] = [];
   @Link activeTopTab: number;
-  @Link featuredActiveTabKey: string;
-  @Link featuredBannerIndex: number;
-  @State private activeBannerIndex: number = 0;
-  @State private bannerLayerOffsetX: number = 0;
+  @State featuredActiveTabKey: string = 'recommend';
+  @Link currentRoute: AppRoute;
 
-  private readonly topTabs: string[] = ['推荐', '精选'];
 
-  private bannerCount(): number {
-    return this.bannerImages.length;
-  }
-
-  private normalizeBannerIndex(index: number): number {
-    const count = this.bannerCount();
-    if (count <= 0) {
-      return 0;
-    }
-    let next = index;
-    while (next < 0) {
-      next += count;
-    }
-    while (next >= count) {
-      next -= count;
-    }
-    return next;
-  }
-
-  private bannerAt(offset: number): string {
-    const count = this.bannerCount();
-    if (count <= 0) {
-      return '';
-    }
-    const targetIndex = this.normalizeBannerIndex(this.activeBannerIndex + offset);
-    return this.bannerImages[targetIndex];
-  }
-
-  private slideDirection(nextIndex: number): number {
-    const count = this.bannerCount();
-    if (count <= 1) {
-      return -1;
-    }
-    const current = this.normalizeBannerIndex(this.activeBannerIndex);
-    const next = this.normalizeBannerIndex(nextIndex);
-    const forward = (next - current + count) % count;
-    const backward = (current - next + count) % count;
-    if (forward === 0) {
-      return -1;
-    }
-    return forward <= backward ? -1 : 1;
-  }
 
   private topSectionHeight(): number {
     return this.showBanner ? 290 : this.featuredScale(336);
@@ -149,48 +102,17 @@ struct HomeTopSection {
   }
 
   private featuredTabsDisplay(): FeaturedTab[] {
-    const tabs: FeaturedTab[] = [];
-    for (let i = 0; i < this.featuredTabs.length && i < 5; i++) {
-      tabs.push(this.featuredTabs[i]);
-    }
+    const tabs: FeaturedTab[] = this.featuredTabs.slice(0, 5);
     if (tabs.length > 0) {
       return tabs;
     }
     return [
-      { key: 'recommend', title: '推荐', sort: 1 },
-      { key: 'sale', title: '特卖', sort: 2 },
-      { key: 'hot', title: '热销', sort: 3 },
-      { key: 'tea', title: '茶叶', sort: 4 },
-      { key: 'ware', title: '茶具', sort: 5 }
+      { key: 'recommend', title: '推荐', sort: 1 } as FeaturedTab,
+      { key: 'sale', title: '特卖', sort: 2 } as FeaturedTab,
+      { key: 'hot', title: '热销', sort: 3 } as FeaturedTab,
+      { key: 'tea', title: '茶叶', sort: 4 } as FeaturedTab,
+      { key: 'ware', title: '茶具', sort: 5 } as FeaturedTab
     ];
-  }
-
-  private featuredBannerCount(): number {
-    return this.featuredBannerImages.length;
-  }
-
-  private featuredNormalizeBannerIndex(index: number): number {
-    const count = this.featuredBannerCount();
-    if (count <= 0) {
-      return 0;
-    }
-    let next = index;
-    while (next < 0) {
-      next += count;
-    }
-    while (next >= count) {
-      next -= count;
-    }
-    return next;
-  }
-
-  private featuredCurrentBannerImage(): string {
-    const count = this.featuredBannerCount();
-    if (count <= 0) {
-      return '';
-    }
-    const index = this.featuredNormalizeBannerIndex(this.featuredBannerIndex);
-    return this.featuredBannerImages[index];
   }
 
   private featuredTabTextOpacity(tabKey: string): number {
@@ -202,7 +124,7 @@ struct HomeTopSection {
       Column()
         .width('100%')
         .height(this.topSectionHeight())
-        .backgroundColor(this.showBanner ? Colors.brandPrimary : Colors.pageBackground);
+        .backgroundColor(this.currentRoute === AppRoute.FILTER ? '#F2F7F0' : Colors.pageBackground);
 
       Column()
         .width(540)
@@ -282,7 +204,7 @@ struct HomeTopSection {
       }
 
       Row() {
-        ForEach(this.topTabs, (tab: string, index: number) => {
+        ForEach(['推荐', '精选'], (tab: string, index: number) => {
           Column({ space: 4 }) {
             Text(index === 0 ? this.bannerModuleTitle : tab)
               .fontSize(20)
@@ -299,7 +221,7 @@ struct HomeTopSection {
               .opacity(index === this.activeTopTab ? 1 : 0);
           }
           .margin({ right: 20 });
-        }, (tab: string, index: number) => tab + index);
+        }, (tab: string, index: number) => tab + index.toString());
       }
       .position({ x: 142, y: 42 });
 
@@ -318,172 +240,39 @@ struct HomeTopSection {
       .position({ x: 29, y: 84 });
 
       if (this.showBanner) {
-        Stack({ alignContent: Alignment.Center }) {
-          if (this.bannerCount() > 2) {
-            Image(this.bannerAt(-2))
-              .width(214)
-              .height(106)
-              .borderRadius(10)
-              .objectFit(ImageFit.Cover)
-              .opacity(0.42)
-              .translate({ x: -66, y: 8 });
-            Image(this.bannerAt(2))
-              .width(214)
-              .height(106)
-              .borderRadius(10)
-              .objectFit(ImageFit.Cover)
-              .opacity(0.42)
-              .translate({ x: 66, y: 8 });
-          }
-
-          if (this.bannerCount() > 1) {
-            Image(this.bannerAt(-1))
-              .width(232)
-              .height(114)
-              .borderRadius(12)
-              .objectFit(ImageFit.Cover)
-              .opacity(0.6)
-              .translate({ x: -50, y: 5 });
-            Image(this.bannerAt(1))
-              .width(232)
-              .height(114)
-              .borderRadius(12)
-              .objectFit(ImageFit.Cover)
-              .opacity(0.6)
-              .translate({ x: 50, y: 5 });
-          }
-
-          Image(this.bannerAt(0))
-            .width(288)
-            .height(141)
-            .borderRadius(16)
-            .objectFit(ImageFit.Cover)
-            .onClick(() => NavService.go(AppRoute.PRODUCT_DETAIL));
-        }
-        .translate({ x: this.bannerLayerOffsetX, y: 0 })
-        .width(288)
-        .height(141)
+        BannerCarousel({
+          bannerImages: this.bannerImages,
+          bannerWidth: 288,
+          bannerHeight: 141,
+          autoPlayInterval: 3200,
+          carouselId: 'top_banner'
+        })
         .position({ x: 43, y: 122 });
-
-        Stack({ alignContent: Alignment.Center }) {
-          Swiper() {
-            ForEach(this.bannerImages, (imageUrl: string) => {
-              Row().width(288).height(141).id(imageUrl);
-            }, (imageUrl: string) => imageUrl);
-          }
-          .width(288)
-          .height(141)
-          .indicator(false)
-          .autoPlay(true)
-          .interval(3200)
-          .loop(true)
-          .opacity(0.001)
-          .onChange((index: number) => {
-            const dir = this.slideDirection(index);
-            const outOffset = 54 * dir;
-            const inOffset = -54 * dir;
-            animateTo({ duration: 95, curve: Curve.EaseIn }, () => {
-              this.bannerLayerOffsetX = outOffset;
-            });
-            animateTo({ duration: 1, delay: 95, curve: Curve.Linear }, () => {
-              this.activeBannerIndex = index;
-              this.bannerLayerOffsetX = inOffset;
-            });
-            animateTo({ duration: 175, delay: 96, curve: Curve.EaseOut }, () => {
-              this.bannerLayerOffsetX = 0;
-            });
-          });
-        }
-        .width(288)
-        .height(141)
-        .position({ x: 43, y: 122 });
-
-        Row() {
-          ForEach(this.bannerImages, (imageUrl: string, index: number) => {
-            Row()
-              .id(imageUrl)
-              .width(this.activeBannerIndex === index ? 21 : 3)
-              .height(3)
-              .borderRadius(2)
-              .backgroundColor(this.activeBannerIndex === index ? Colors.indicatorActive : Colors.indicatorInactive)
-              .opacity(this.activeBannerIndex === index ? 1 : 0.3)
-              .margin({ left: index === 0 ? 0 : 5 });
-          }, (imageUrl: string) => imageUrl);
-        }
-        .position({ x: 168, y: 271 });
       } else {
         Row() {
-          ForEach(this.featuredTabsDisplay(), (tab: FeaturedTab, index: number) => {
+          ForEach(this.featuredTabsDisplay(), (tab: FeaturedTab, _: number) => {
             Text(tab.title)
               .fontSize(this.featuredScale(14))
               .fontWeight(tab.key === this.featuredActiveTabKey ? FontWeight.Medium : FontWeight.Regular)
               .fontColor('#2F5452')
               .opacity(this.featuredTabTextOpacity(tab.key))
               .onClick(() => {
-                void index;
                 this.featuredActiveTabKey = tab.key;
               });
-          }, (tab: FeaturedTab, index: number) => tab.key + index);
+          }, (tab: FeaturedTab, index: number) => tab.key + (index !== undefined ? index.toString() : ''));
         }
         .width(this.featuredScale(314))
         .position({ x: this.featuredScale(31), y: this.featuredScale(126) })
         .justifyContent(FlexAlign.SpaceBetween);
 
-        Stack({ alignContent: Alignment.Center }) {
-          if (this.featuredCurrentBannerImage().length > 0) {
-            Image(this.featuredCurrentBannerImage())
-              .width(this.featuredMainWidth())
-              .height(this.featuredBannerHeight())
-              .borderRadius(this.featuredScale(10))
-              .objectFit(ImageFit.Cover)
-              .onClick(() => NavService.go(AppRoute.PRODUCT_DETAIL));
-          } else {
-            Row()
-              .width(this.featuredMainWidth())
-              .height(this.featuredBannerHeight())
-              .borderRadius(this.featuredScale(10))
-              .backgroundColor(Colors.brandPrimary);
-          }
-
-          Swiper() {
-            ForEach(this.featuredBannerImages, (imageUrl: string) => {
-              Row()
-                .id(imageUrl)
-                .width(this.featuredMainWidth())
-                .height(this.featuredBannerHeight());
-            }, (imageUrl: string) => imageUrl);
-          }
-          .width(this.featuredMainWidth())
-          .height(this.featuredBannerHeight())
-          .indicator(false)
-          .autoPlay(true)
-          .interval(3200)
-          .loop(true)
-          .opacity(0.001)
-          .onChange((index: number) => {
-            this.featuredBannerIndex = index;
-          });
-        }
+        BannerCarousel({
+          bannerImages: this.featuredBannerImages,
+          bannerWidth: this.featuredMainWidth(),
+          bannerHeight: this.featuredBannerHeight(),
+          autoPlayInterval: 3200,
+          carouselId: 'top_featured_banner'
+        })
         .position({ x: this.featuredMainLeft(), y: this.featuredScale(157) });
-
-        Row() {
-          ForEach(this.featuredBannerImages, (imageUrl: string, index: number) => {
-            Row()
-              .id(imageUrl)
-              .width(this.featuredBannerIndex === index ? this.featuredScale(21) : this.featuredScale(3))
-              .height(this.featuredScale(3))
-              .borderRadius(this.featuredScale(2))
-              .backgroundColor(this.featuredBannerIndex === index ? '#2F5452' : '#A2B8B4')
-              .opacity(this.featuredBannerIndex === index ? 1 : 0.4)
-              .margin({ left: index === 0 ? 0 : this.featuredScale(5) });
-          }, (imageUrl: string) => imageUrl);
-        }
-        .width(this.featuredScale(41))
-        .justifyContent(FlexAlign.Center)
-        .position({
-          x: this.featuredMainLeft() + (this.featuredMainWidth() - this.featuredScale(41)) / 2,
-          y: this.featuredScale(318)
-        });
       }
     }
     .width('100%')
@@ -507,15 +296,36 @@ export struct HomeFeaturePage {
   @State private reviewSectionTitle: string = '茶评';
   @State private newTeaSectionTitle: string = '新茶上市';
   @State private newTeaNotice: string = '限量好茶免费品，品出慢时光';
-  @State private featuredSectionTitle: string = '精选';
+
   @State private featuredTabs: FeaturedTab[] = [
-    { key: 'recommend', title: '推荐', sort: 1 },
-    { key: 'sale', title: '特卖', sort: 2 },
-    { key: 'hot', title: '热销', sort: 3 },
-    { key: 'tea', title: '茶叶', sort: 4 },
-    { key: 'ware', title: '茶具', sort: 5 }
+    { key: 'recommend', title: '推荐', sort: 1 } as FeaturedTab,
+    { key: 'sale', title: '特卖', sort: 2 } as FeaturedTab,
+    { key: 'hot', title: '热销', sort: 3 } as FeaturedTab,
+    { key: 'tea', title: '茶叶', sort: 4 } as FeaturedTab,
   ];
-  @State private featuredActiveTabKey: string = 'hot';
+
+  private handleAddToCart(card: FeaturedListCard) {
+    const existing: CartItem[] = AppStorage.get<CartItem[]>('cartItems') || [];
+    const index = existing.findIndex((item: CartItem) => item.product.name ? item.product.name === card.name : false);
+    if (index >= 0) {
+      existing[index].quantity += 1;
+    } else {
+      const newItem = new CartItem(
+        card.name || Date.now().toString(),
+        card,
+        1,
+        true
+      );
+      existing.push(newItem);
+    }
+    AppStorage.setOrCreate('cartItems', [...existing]);
+    try {
+      promptAction.showToast({ message: '已加入购物车' });
+    } catch (err) {
+      // Ignored
+    }
+  }
+
   @State private featuredSections: FeaturedSection[] = [
     {
       key: 'hero_banner',
@@ -525,16 +335,43 @@ export struct HomeFeaturePage {
       sort: 1,
       items: [
         {
-          title: '精选主图',
+          id: '',
+          title: '精选主图1',
           subtitle: '',
           imageUrl: 'https://nfzznasyztaontqmuhjq.supabase.co/storage/v1/render/image/public/product-images/home/home_banner_1.png?width=900&quality=72',
-          priceText: '',
+          price: '',
+          tag: '',
+          linkType: '',
           linkValue: 'featured_hero_1',
           sort: 1,
           cards: []
-        }
+        } as FeaturedItem,
+        {
+          id: '',
+          title: '精选主图2',
+          subtitle: '',
+          imageUrl: 'https://nfzznasyztaontqmuhjq.supabase.co/storage/v1/render/image/public/product-images/home/home_banner_2.png?width=900&quality=72',
+          price: '',
+          tag: '',
+          linkType: '',
+          linkValue: 'featured_hero_2',
+          sort: 2,
+          cards: []
+        } as FeaturedItem,
+        {
+          id: '',
+          title: '精选主图3',
+          subtitle: '',
+          imageUrl: 'https://nfzznasyztaontqmuhjq.supabase.co/storage/v1/render/image/public/product-images/home/home_banner_1.png?width=900&quality=72',
+          price: '',
+          tag: '',
+          linkType: '',
+          linkValue: 'featured_hero_3',
+          sort: 3,
+          cards: []
+        } as FeaturedItem
       ]
-    },
+    } as FeaturedSection,
     {
       key: 'tea_circle',
       title: '高山绿茶',
@@ -543,70 +380,91 @@ export struct HomeFeaturePage {
       sort: 2,
       items: [
         {
+          id: '',
           title: '高山绿茶',
           subtitle: '',
           imageUrl: 'https://nfzznasyztaontqmuhjq.supabase.co/storage/v1/render/image/public/product-images/home/home_review_bg_3.png?width=240&quality=72',
-          priceText: '',
+          price: '',
+          tag: '',
+          linkType: '',
           linkValue: 'featured_circle_1',
           sort: 1,
           cards: []
-        },
+        } as FeaturedItem,
         {
+          id: '',
           title: '银针绿茶',
           subtitle: '',
           imageUrl: 'https://nfzznasyztaontqmuhjq.supabase.co/storage/v1/render/image/public/product-images/home/home_review_bg_4.png?width=240&quality=72',
-          priceText: '',
+          price: '',
+          tag: '',
+          linkType: '',
           linkValue: 'featured_circle_2',
           sort: 2,
           cards: []
-        },
+        } as FeaturedItem,
         {
+          id: '',
           title: '碧螺春',
           subtitle: '',
           imageUrl: 'https://nfzznasyztaontqmuhjq.supabase.co/storage/v1/render/image/public/product-images/home/home_review_bg_1.png?width=240&quality=72',
-          priceText: '',
+          price: '',
+          tag: '',
+          linkType: '',
           linkValue: 'featured_circle_3',
           sort: 3,
           cards: []
-        },
+        } as FeaturedItem,
         {
+          id: '',
           title: '菊花茶',
           subtitle: '',
           imageUrl: 'https://nfzznasyztaontqmuhjq.supabase.co/storage/v1/render/image/public/product-images/home/home_review_bg_2.png?width=240&quality=72',
-          priceText: '',
+          price: '',
+          tag: '',
+          linkType: '',
           linkValue: 'featured_circle_4',
           sort: 4,
           cards: []
-        },
+        } as FeaturedItem,
         {
+          id: '',
           title: '红茶',
           subtitle: '',
           imageUrl: 'https://nfzznasyztaontqmuhjq.supabase.co/storage/v1/render/image/public/product-images/home/home_review_bg_5.png?width=240&quality=72',
-          priceText: '',
+          price: '',
+          tag: '',
+          linkType: '',
           linkValue: 'featured_circle_5',
           sort: 5,
           cards: []
-        },
+        } as FeaturedItem,
         {
+          id: '',
           title: '花茶',
           subtitle: '',
           imageUrl: 'https://nfzznasyztaontqmuhjq.supabase.co/storage/v1/render/image/public/product-images/home/home_review_bg_6.png?width=240&quality=72',
-          priceText: '',
+          price: '',
+          tag: '',
+          linkType: '',
           linkValue: 'featured_circle_6',
           sort: 6,
           cards: []
-        },
+        } as FeaturedItem,
         {
+          id: '',
           title: '白茶',
           subtitle: '',
           imageUrl: 'https://nfzznasyztaontqmuhjq.supabase.co/storage/v1/render/image/public/product-images/home/home_review_bg_7.png?width=240&quality=72',
-          priceText: '',
+          price: '',
+          tag: '',
+          linkType: '',
           linkValue: 'featured_circle_7',
           sort: 7,
           cards: []
-        }
+        } as FeaturedItem
       ]
-    },
+    } as FeaturedSection,
     {
       key: 'boutique_recommend',
       title: '精品推荐',
@@ -615,43 +473,55 @@ export struct HomeFeaturePage {
       sort: 3,
       items: [
         {
+          id: '',
           title: '绿茶',
           subtitle: '',
           imageUrl: 'https://nfzznasyztaontqmuhjq.supabase.co/storage/v1/render/image/public/product-images/home/home_new_tea_1.png?width=560&quality=72',
           priceText: '￥128',
+          tag: '',
+          linkType: '',
           linkValue: 'featured_boutique_1',
           sort: 1,
           cards: []
-        },
+        } as FeaturedItem,
         {
+          id: '',
           title: '白茶',
           subtitle: '',
           imageUrl: 'https://nfzznasyztaontqmuhjq.supabase.co/storage/v1/render/image/public/product-images/home/home_new_tea_2.png?width=560&quality=72',
           priceText: '￥168',
+          tag: '',
+          linkType: '',
           linkValue: 'featured_boutique_2',
           sort: 2,
           cards: []
-        },
+        } as FeaturedItem,
         {
+          id: '',
           title: '菊花茶',
           subtitle: '',
           imageUrl: 'https://nfzznasyztaontqmuhjq.supabase.co/storage/v1/render/image/public/product-images/home/home_review_bg_2.png?width=240&quality=72',
           priceText: '￥99',
+          tag: '',
+          linkType: '',
           linkValue: 'featured_boutique_3',
           sort: 3,
           cards: []
-        },
+        } as FeaturedItem,
         {
+          id: '',
           title: '红茶',
           subtitle: '',
           imageUrl: 'https://nfzznasyztaontqmuhjq.supabase.co/storage/v1/render/image/public/product-images/home/home_review_bg_1.png?width=240&quality=72',
           priceText: '￥118',
+          tag: '',
+          linkType: '',
           linkValue: 'featured_boutique_4',
           sort: 4,
           cards: []
-        }
+        } as FeaturedItem
       ]
-    },
+    } as FeaturedSection,
     {
       key: 'recommend_list',
       title: '推荐',
@@ -660,10 +530,13 @@ export struct HomeFeaturePage {
       sort: 4,
       items: [
         {
+          id: '',
           title: '推荐组 1',
           subtitle: '',
           imageUrl: '',
-          priceText: '',
+          price: '',
+          tag: '',
+          linkType: '',
           linkValue: 'featured_list_1',
           sort: 1,
           cards: [
@@ -674,11 +547,11 @@ export struct HomeFeaturePage {
               soldCountText: '114214人买过',
               badgePrimary: '新品上市',
               badgeSecondary: '月销冠军',
-              priceText: '￥114.00/盒',
               imageUrl: 'https://nfzznasyztaontqmuhjq.supabase.co/storage/v1/render/image/public/product-images/home/home_new_tea_1.png?width=320&quality=72',
-              linkValue: 'featured_list_1_a',
-              sort: 1
-            },
+              priceText: '￥114.00/盒',
+              marketPrice: '',
+              buttonText: ''
+            } as FeaturedListCard,
             {
               name: '嘉应菊花茶',
               subtitle: '嘉应丰顺茶饼',
@@ -686,22 +559,26 @@ export struct HomeFeaturePage {
               soldCountText: '114244人买过',
               badgePrimary: '新品上市',
               badgeSecondary: '限时折扣',
-              priceText: '￥53.00/盒',
               imageUrl: 'https://nfzznasyztaontqmuhjq.supabase.co/storage/v1/render/image/public/product-images/home/home_new_tea_2.png?width=320&quality=72',
-              linkValue: 'featured_list_1_b',
-              sort: 2
-            }
+              priceText: '￥53.00/盒',
+              marketPrice: '',
+              buttonText: ''
+            } as FeaturedListCard
           ]
-        }
+        } as FeaturedItem
       ]
-    }
+    } as FeaturedSection
   ];
   @State private featuredBannerImages: string[] = [
+    'https://nfzznasyztaontqmuhjq.supabase.co/storage/v1/render/image/public/product-images/home/home_banner_1.png?width=900&quality=72',
+    'https://nfzznasyztaontqmuhjq.supabase.co/storage/v1/render/image/public/product-images/home/home_banner_2.png?width=900&quality=72',
     'https://nfzznasyztaontqmuhjq.supabase.co/storage/v1/render/image/public/product-images/home/home_banner_1.png?width=900&quality=72'
   ];
   @State private featuredBannerIndex: number = 0;
   @State private selectedReviewTea: string = '绿茶';
   @State private bannerImages: string[] = [
+    'https://nfzznasyztaontqmuhjq.supabase.co/storage/v1/render/image/public/product-images/home/home_banner_1.png?width=900&quality=72',
+    'https://nfzznasyztaontqmuhjq.supabase.co/storage/v1/render/image/public/product-images/home/home_banner_2.png?width=900&quality=72',
     'https://nfzznasyztaontqmuhjq.supabase.co/storage/v1/render/image/public/product-images/home/home_banner_1.png?width=900&quality=72'
   ];
   private navTabsController: TabsController = new TabsController();
@@ -776,9 +653,6 @@ export struct HomeFeaturePage {
   private readonly featuredCircleSize: number = 68;
   private readonly featuredBoutiqueGap: number = 8;
   private readonly featuredBoutiqueWidthRatio: number = 109 / 343;
-  private readonly featuredRecommendCardGap: number = 10;
-  private readonly featuredTopTabsRowWidth: number = 314;
-  private readonly featuredTopTabsRowLeft: number = 31;
   private readonly featuredMainWidthBase: number = 340;
   private readonly featuredMainLeftBase: number = 17;
 
@@ -851,40 +725,59 @@ export struct HomeFeaturePage {
         })
           .width('100%')
           .height('100%');
+      } else if (this.currentRoute === AppRoute.CHECKOUT) {
+        CheckoutPage({
+          currentRoute: $currentRoute
+        })
+          .width('100%')
+          .height('100%');
       } else {
         Column() {
-          HomeTopSection({
-            bannerModuleTitle: this.bannerModuleTitle,
-            bannerImages: this.bannerImages,
-            showBanner: this.activeTopTab === 0,
-            homeContentWidth: this.homeContentWidth,
-            featuredTabs: this.featuredTopTabsDisplay(),
-            featuredBannerImages: this.featuredBannerImages,
-            activeTopTab: $activeTopTab,
-            featuredActiveTabKey: $featuredActiveTabKey,
-            featuredBannerIndex: $featuredBannerIndex
-          });
+          if (this.currentRoute === AppRoute.FILTER) {
+            FilterPage({
+              currentRoute: $currentRoute
+            })
+              .width('100%')
+              .layoutWeight(1);
+          } else if (this.currentRoute === AppRoute.CART) {
+            CartPage({
+              currentRoute: $currentRoute
+            })
+              .width('100%')
+              .layoutWeight(1);
+          } else {
+            HomeTopSection({
+              bannerModuleTitle: this.bannerModuleTitle,
+              bannerImages: this.bannerImages,
+              showBanner: this.activeTopTab === 0,
+              homeContentWidth: this.homeContentWidth,
+              featuredTabs: this.featuredTopTabsDisplay(),
+              featuredBannerImages: this.featuredBannerImages,
+              activeTopTab: $activeTopTab,
+              currentRoute: $currentRoute
+            });
 
-          Scroll() {
-            Column({ space: 14 }) {
-              if (ApiConfig.enableBackendProbe) {
-                this.BackendProbeArea();
+            Scroll() {
+              Column({ space: 14 }) {
+                if (ApiConfig.enableBackendProbe) {
+                  this.BackendProbeArea();
+                }
+                if (this.activeTopTab === 0) {
+                  this.KingKongArea();
+                  this.ReviewArea();
+                  this.NewTeaArea();
+                  this.PromoArea();
+                } else {
+                  this.FeaturedArea();
+                }
+                Row().height(100);
               }
-              if (this.activeTopTab === 0) {
-                this.KingKongArea();
-                this.ReviewArea();
-                this.NewTeaArea();
-                this.PromoArea();
-              } else {
-                this.FeaturedArea();
-              }
-              Row().height(100);
+              .width('100%')
+              .padding({ top: this.activeTopTab === 0 ? 10 : 0, bottom: 8 });
             }
-            .width('100%')
-            .padding({ top: this.activeTopTab === 0 ? 10 : 0, bottom: 8 });
+            .layoutWeight(1)
+            .scrollBar(BarState.Off)
           }
-          .layoutWeight(1)
-          .scrollBar(BarState.Off)
         }
         .width('100%')
         .height('100%')
@@ -895,7 +788,7 @@ export struct HomeFeaturePage {
             this.homeContentWidth = width;
           }
         })
-        .backgroundColor(Colors.pageBackground);
+        .backgroundColor(this.currentRoute === AppRoute.FILTER ? '#F2F7F0' : Colors.pageBackground);
 
         this.BottomNav();
       }
@@ -903,7 +796,7 @@ export struct HomeFeaturePage {
     .width('100%')
     .height('100%')
     .expandSafeArea([SafeAreaType.SYSTEM], [SafeAreaEdge.TOP, SafeAreaEdge.BOTTOM])
-    .backgroundColor(Colors.pageBackground);
+    .backgroundColor(this.currentRoute === AppRoute.FILTER ? '#F2F7F0' : Colors.pageBackground);
   }
 
   private formatHomeResult(data: HomeData): string {
@@ -974,10 +867,7 @@ export struct HomeFeaturePage {
         this.applyNewTeaItems(module.payload?.items, module.payload?.notice, module.payload?.updatedAt);
       }
       if (module.key === 'featured') {
-        if (module.title.length > 0) {
-          this.featuredSectionTitle = module.title;
-        }
-        this.applyFeaturedTabs(module.payload?.tabs, module.payload?.activeTab);
+        this.applyFeaturedTabs(module.payload?.tabs);
         this.applyFeaturedSections(module.payload?.sections, module.payload?.updatedAt);
       }
     }
@@ -991,7 +881,7 @@ export struct HomeFeaturePage {
     if (url.indexOf(marker) >= 0) {
       return url;
     }
-    return url.indexOf('?') >= 0 ? `${url}&v=${version}` : `${url}?v=${version}`;
+    return url.indexOf('?') >= 0 ? `${url}&v=${version}` : `${url}?${version}`;
   }
 
   private applyReviewTopics(topics?: HomeReviewTopicData[], updatedAt?: number): void {
@@ -1049,7 +939,7 @@ export struct HomeFeaturePage {
     }
   }
 
-  private applyFeaturedTabs(tabs?: HomeFeaturedTabData[], activeTab?: string): void {
+  private applyFeaturedTabs(tabs?: HomeFeaturedTabData[]): void {
     if (tabs !== undefined && tabs !== null && tabs.length > 0) {
       const sortedTabs: HomeFeaturedTabData[] = [];
       for (let i = 0; i < tabs.length; i++) {
@@ -1062,15 +952,13 @@ export struct HomeFeaturePage {
         if (tab.key.length === 0 || tab.title.length === 0) {
           continue;
         }
-        nextTabs.push({ key: tab.key, title: tab.title, sort: tab.sort });
+        nextTabs.push({ key: tab.key, title: tab.title, sort: tab.sort } as FeaturedTab);
       }
       if (nextTabs.length > 0) {
         this.featuredTabs = nextTabs;
       }
     }
-    if (activeTab !== undefined && activeTab !== null && activeTab.length > 0) {
-      this.featuredActiveTabKey = activeTab;
-    }
+
   }
 
   private applyFeaturedSections(sections?: HomeFeaturedSectionData[], updatedAt?: number): void {
@@ -1094,7 +982,7 @@ export struct HomeFeaturePage {
         layout: source.layout,
         sort: source.sort,
         items: mappedItems
-      });
+      } as FeaturedSection);
 
       if (source.key === 'hero_banner' && source.items !== undefined && source.items !== null) {
         const heroItems: HomeFeaturedItemData[] = [];
@@ -1146,7 +1034,7 @@ export struct HomeFeaturePage {
         linkValue: item.linkValue,
         sort: item.sort,
         cards: this.mapFeaturedListCards(item.cards, version)
-      });
+      } as FeaturedItem);
     }
     return mapped;
   }
@@ -1180,7 +1068,7 @@ export struct HomeFeaturePage {
           this.optimizeImageUrl(this.withCacheVersion(card.imageUrl, imageVersion), 320) : '',
         linkValue: card.linkValue,
         sort: card.sort
-      });
+      } as FeaturedListCard);
     }
     return mapped;
   }
@@ -1748,11 +1636,14 @@ export struct HomeFeaturePage {
         .borderRadius(6)
         .backgroundColor('#71AD91');
 
-      Image(patternImage)
-        .width('100%')
-        .height(this.promoScaled(49))
-        .objectFit(ImageFit.Fill)
-        .margin({ left: 0, top: this.promoScaled(79) });
+      Stack({ alignContent: Alignment.Bottom }) {
+        Image(patternImage)
+          .width('130%')
+          .objectFit(ImageFit.Contain)
+          .translate({ y: '30%' });
+      }
+      .width('100%')
+      .height('100%')
 
       Column() {
         Text(title)
@@ -1783,6 +1674,7 @@ export struct HomeFeaturePage {
     }
     .width('100%')
     .height(this.promoSmallCardHeight())
+    .clip(true)
     .onClick(() => NavService.go(AppRoute.PRODUCT_DETAIL));
   }
 
@@ -1796,18 +1688,6 @@ export struct HomeFeaturePage {
 
   private featuredMainWidth(): number {
     return this.featuredScale(this.featuredMainWidthBase);
-  }
-
-  private featuredTopTabsRowLeftPx(): number {
-    return this.featuredScale(this.featuredTopTabsRowLeft);
-  }
-
-  private featuredTopTabsRowWidthPx(): number {
-    return this.featuredScale(this.featuredTopTabsRowWidth);
-  }
-
-  private featuredBannerHeight(): number {
-    return this.featuredMainWidth() * (149 / 340);
   }
 
   private featuredCircleItemSize(): number {
@@ -1834,40 +1714,29 @@ export struct HomeFeaturePage {
     return this.featuredScale(341);
   }
 
-  private featuredRecommendGroupHeight(): number {
+  private featuredRecommendCardWidth(): number {
+    return this.featuredScale(161);
+  }
+
+  private featuredRecommendCardHeight(): number {
     return this.featuredScale(224);
   }
 
-  private featuredRecommendCardRowHeight(): number {
-    return this.featuredScale(104);
-  }
-
-  private featuredRecommendCardImageWidth(): number {
-    return this.featuredScale(133);
-  }
-
   private featuredRecommendCardImageHeight(): number {
-    return this.featuredScale(104);
-  }
-
-  private featuredTabTextOpacity(tabKey: string): number {
-    return tabKey === this.featuredActiveTabKey ? 1 : 0.7;
+    return this.featuredScale(149);
   }
 
   private featuredTopTabsDisplay(): FeaturedTab[] {
-    const tabs: FeaturedTab[] = [];
-    for (let i = 0; i < this.featuredTabs.length && i < 5; i++) {
-      tabs.push(this.featuredTabs[i]);
-    }
+    const tabs: FeaturedTab[] = this.featuredTabs.slice(0, 5);
     if (tabs.length > 0) {
       return tabs;
     }
     return [
-      { key: 'recommend', title: '推荐', sort: 1 },
-      { key: 'sale', title: '特卖', sort: 2 },
-      { key: 'hot', title: '热销', sort: 3 },
-      { key: 'tea', title: '茶叶', sort: 4 },
-      { key: 'ware', title: '茶具', sort: 5 }
+      { key: 'recommend', title: '推荐', sort: 1 } as FeaturedTab,
+      { key: 'sale', title: '特卖', sort: 2 } as FeaturedTab,
+      { key: 'hot', title: '热销', sort: 3 } as FeaturedTab,
+      { key: 'tea', title: '茶叶', sort: 4 } as FeaturedTab,
+      { key: 'ware', title: '茶具', sort: 5 } as FeaturedTab
     ];
   }
 
@@ -1923,43 +1792,18 @@ export struct HomeFeaturePage {
 
   private featuredRecommendPrimaryCards(): FeaturedListCard[] {
     const item = this.featuredRecommendPrimaryItem();
-    if (item === undefined || item.cards.length === 0) {
+    const itemCards = item?.cards;
+    if (itemCards === undefined || itemCards.length === 0) {
       return [];
     }
     const cards: FeaturedListCard[] = [];
-    for (let i = 0; i < item.cards.length && i < 2; i++) {
-      cards.push(item.cards[i]);
+    for (let i = 0; i < itemCards.length && i < 2; i++) {
+      cards.push(itemCards[i]);
     }
     return cards;
   }
 
-  private featuredBannerCount(): number {
-    return this.featuredBannerImages.length;
-  }
 
-  private featuredNormalizeBannerIndex(index: number): number {
-    const count = this.featuredBannerCount();
-    if (count <= 0) {
-      return 0;
-    }
-    let next = index;
-    while (next < 0) {
-      next += count;
-    }
-    while (next >= count) {
-      next -= count;
-    }
-    return next;
-  }
-
-  private featuredCurrentBannerImage(): string {
-    const count = this.featuredBannerCount();
-    if (count <= 0) {
-      return '';
-    }
-    const index = this.featuredNormalizeBannerIndex(this.featuredBannerIndex);
-    return this.featuredBannerImages[index];
-  }
 
   @Builder
   private FeaturedArea() {
@@ -1970,82 +1814,9 @@ export struct HomeFeaturePage {
     .width('100%');
   }
 
-  @Builder
-  private FeaturedTopTabsStrip() {
-    Row() {
-      Row() {
-        ForEach(this.featuredTopTabsDisplay(), (tab: FeaturedTab, index: number) => {
-          Text(tab.title)
-            .fontSize(14)
-            .fontColor(Colors.cardBackground)
-            .opacity(this.featuredTabTextOpacity(tab.key))
-            .onClick(() => {
-              void index;
-              this.featuredActiveTabKey = tab.key;
-            });
-        }, (tab: FeaturedTab, index: number) => tab.key + index);
-      }
-      .width(this.featuredTopTabsRowWidthPx())
-      .justifyContent(FlexAlign.SpaceBetween);
-      Blank();
-    }
-    .width('100%')
-    .padding({ left: this.featuredTopTabsRowLeftPx(), right: this.featuredScale(20) });
-  }
 
-  @Builder
-  private FeaturedBannerArea() {
-    Column({ space: this.featuredScale(12) }) {
-      Stack({ alignContent: Alignment.Center }) {
-        if (this.featuredCurrentBannerImage().length > 0) {
-          Image(this.featuredCurrentBannerImage())
-            .width(this.featuredMainWidth())
-            .height(this.featuredBannerHeight())
-            .borderRadius(10)
-            .objectFit(ImageFit.Cover)
-            .onClick(() => NavService.go(AppRoute.PRODUCT_DETAIL));
-        } else {
-          Row()
-            .width(this.featuredMainWidth())
-            .height(this.featuredBannerHeight())
-            .borderRadius(10)
-            .backgroundColor(Colors.brandPrimary);
-        }
 
-        Swiper() {
-          ForEach(this.featuredBannerImages, (imageUrl: string) => {
-            Row().width(this.featuredMainWidth()).height(this.featuredBannerHeight()).id(imageUrl);
-          }, (imageUrl: string) => imageUrl);
-        }
-        .width(this.featuredMainWidth())
-        .height(this.featuredBannerHeight())
-        .indicator(false)
-        .autoPlay(true)
-        .interval(3200)
-        .loop(true)
-        .opacity(0.001)
-        .onChange((index: number) => {
-          this.featuredBannerIndex = index;
-        });
-      }
 
-      Row() {
-        ForEach(this.featuredBannerImages, (imageUrl: string, index: number) => {
-          Row()
-            .id(imageUrl)
-            .width(this.featuredBannerIndex === index ? this.featuredScale(21) : this.featuredScale(3))
-            .height(this.featuredScale(3))
-            .borderRadius(this.featuredScale(2))
-            .backgroundColor(this.featuredBannerIndex === index ? Colors.cardBackground : Colors.indicatorInactive)
-            .opacity(this.featuredBannerIndex === index ? 1 : 0.36)
-            .margin({ left: index === 0 ? 0 : this.featuredScale(5) });
-        }, (imageUrl: string) => imageUrl);
-      }
-      .width(this.featuredScale(41))
-      .justifyContent(FlexAlign.Center);
-    }
-    .margin({ left: this.featuredMainLeft(), top: this.featuredScale(14) });
-  }
 
   @Builder
   private FeaturedKingKongArea() {
@@ -2142,36 +1913,45 @@ export struct HomeFeaturePage {
   @Builder
   private FeaturedBoutiqueCard(item: FeaturedItem, index: number) {
     Stack({ alignContent: Alignment.BottomStart }) {
-      if (item.imageUrl.length > 0) {
-        Image(item.imageUrl)
+      Column() {
+        if (item.imageUrl.length > 0) {
+          Image(item.imageUrl)
+            .width('100%')
+            .height(this.featuredBoutiqueCardHeight() - this.featuredScale(35))
+            .objectFit(ImageFit.Cover)
+            .borderRadius({ topLeft: this.featuredScale(8), topRight: this.featuredScale(8), bottomLeft: 0, bottomRight: 0 });
+        } else {
+          Row()
+            .width('100%')
+            .height(this.featuredBoutiqueCardHeight() - this.featuredScale(35))
+            .backgroundColor(Colors.newTeaCardBackground)
+            .borderRadius({ topLeft: this.featuredScale(8), topRight: this.featuredScale(8), bottomLeft: 0, bottomRight: 0 });
+        }
+
+        Image($r('app.media.home_new_tea_card_pattern'))
           .width('100%')
-          .height('100%')
+          .height(this.featuredScale(35))
           .objectFit(ImageFit.Cover)
-          .borderRadius(this.featuredScale(8));
-      } else {
-        Row()
-          .width('100%')
-          .height('100%')
-          .backgroundColor(Colors.newTeaCardBackground)
-          .borderRadius(this.featuredScale(8));
+          .borderRadius({ topLeft: 0, topRight: 0, bottomLeft: this.featuredScale(8), bottomRight: this.featuredScale(8) });
       }
+      .width('100%')
+      .height('100%');
 
-      Row()
-        .width('100%')
-        .height(this.featuredScale(35))
-        .borderRadius({
-          topLeft: 0,
-          topRight: 0,
-          bottomLeft: this.featuredScale(8),
-          bottomRight: this.featuredScale(8)
-        })
-        .backgroundColor('#2F5452CC');
-
-      Text(item.title)
-        .fontSize(14)
-        .fontWeight(FontWeight.Medium)
-        .fontColor(Colors.cardBackground)
-        .margin({ left: this.featuredScale(8), bottom: this.featuredScale(9) });
+      Row() {
+        Text(item.title)
+          .fontSize(14)
+          .fontWeight(FontWeight.Medium)
+          .fontColor(Colors.cardBackground)
+          .maxLines(1);
+        Blank();
+        Text(item.priceText)
+          .fontSize(14)
+          .fontWeight(FontWeight.Bold)
+          .fontColor(Colors.cardBackground) // Light color to pop on dark texture
+          .maxLines(1);
+      }
+      .width('100%')
+      .padding({ left: this.featuredScale(8), right: this.featuredScale(8), bottom: this.featuredScale(8) });
     }
     .width(this.featuredBoutiqueCardWidth())
     .height(this.featuredBoutiqueCardHeight())
@@ -2185,15 +1965,12 @@ export struct HomeFeaturePage {
   @Builder
   private FeaturedRecommendPrimaryGroup() {
     if (this.featuredRecommendPrimaryCards().length > 0) {
-      Column({ space: this.featuredScale(16) }) {
+      Flex({ wrap: FlexWrap.Wrap, justifyContent: FlexAlign.SpaceBetween }) {
         ForEach(this.featuredRecommendPrimaryCards(), (card: FeaturedListCard, index: number) => {
           this.FeaturedRecommendCard(card, index);
-        }, (card: FeaturedListCard, index: number) => card.name + card.linkValue + index);
+        }, (card: FeaturedListCard, index: number) => (card.name || '') + (card.linkValue || '') + index);
       }
       .width(this.featuredRecommendGroupWidth())
-      .height(this.featuredRecommendGroupHeight())
-      .padding(this.featuredScale(8))
-      .borderRadius(this.featuredScale(8))
       .backgroundColor('#EEF4ED')
       .margin({ left: this.featuredMainLeft(), top: this.featuredScale(25) });
     }
@@ -2201,76 +1978,96 @@ export struct HomeFeaturePage {
 
   @Builder
   private FeaturedRecommendCard(card: FeaturedListCard, index: number) {
-    Row() {
-      if (card.imageUrl.length > 0) {
+    Column() {
+      if (card.imageUrl && card.imageUrl.length > 0) {
         Image(card.imageUrl)
-          .width(this.featuredRecommendCardImageWidth())
+          .width(this.featuredRecommendCardWidth())
           .height(this.featuredRecommendCardImageHeight())
-          .borderRadius(this.featuredScale(6))
+          .borderRadius({ topLeft: this.featuredScale(6), topRight: this.featuredScale(6) })
           .objectFit(ImageFit.Cover);
       } else {
         Row()
-          .width(this.featuredRecommendCardImageWidth())
+          .width(this.featuredRecommendCardWidth())
           .height(this.featuredRecommendCardImageHeight())
-          .borderRadius(this.featuredScale(6))
+          .borderRadius({ topLeft: this.featuredScale(6), topRight: this.featuredScale(6) })
           .backgroundColor(Colors.newTeaCardBackground);
       }
 
       Column({ space: this.featuredScale(4) }) {
-        Text(`${card.name} ${card.subtitle}\n${card.marketingText}`)
-          .fontSize(14)
-          .fontColor('#314D4C')
-          .lineHeight(this.featuredScale(17))
-          .maxLines(2)
-          .textOverflow({ overflow: TextOverflow.Ellipsis });
+        Row() {
+          Text(card.name || '')
+            .fontSize(14)
+            .fontWeight(FontWeight.Medium)
+            .fontColor('#4D716F')
+            .maxLines(1)
+            .textOverflow({ overflow: TextOverflow.Ellipsis })
+            .layoutWeight(1);
 
-        if (card.soldCountText.length > 0) {
-          Text(card.soldCountText)
-            .fontSize(10)
-            .fontColor('#6C8B88');
+          if (card.soldCountText && card.soldCountText.length > 0) {
+            Text(card.soldCountText)
+              .fontSize(10)
+              .fontColor('#999999');
+          }
         }
+        .width('100%')
+        .margin({ top: this.featuredScale(6) });
 
         Row({ space: this.featuredScale(4) }) {
-          if (card.badgePrimary.length > 0) {
+          if (card.badgePrimary && card.badgePrimary.length > 0) {
             Row() {
               Text(card.badgePrimary)
-                .fontSize(8)
+                .fontSize(9)
                 .fontColor(Colors.cardBackground);
             }
-            .height(this.featuredScale(14))
-            .padding({ left: this.featuredScale(5), right: this.featuredScale(5) })
+            .padding({ left: this.featuredScale(4), right: this.featuredScale(4), top: this.featuredScale(1), bottom: this.featuredScale(1) })
             .borderRadius(this.featuredScale(2))
-            .backgroundColor('#D85E53');
+            .backgroundColor('#71AD91');
           }
-          if (card.badgeSecondary.length > 0) {
+          if (card.badgeSecondary && card.badgeSecondary.length > 0) {
             Row() {
               Text(card.badgeSecondary)
-                .fontSize(8)
+                .fontSize(9)
                 .fontColor(Colors.cardBackground);
             }
-            .height(this.featuredScale(14))
-            .padding({ left: this.featuredScale(5), right: this.featuredScale(5) })
+            .padding({ left: this.featuredScale(4), right: this.featuredScale(4), top: this.featuredScale(1), bottom: this.featuredScale(1) })
             .borderRadius(this.featuredScale(2))
-            .backgroundColor('#D85E53');
+            .backgroundColor('#71AD91');
           }
+        }
+        .width('100%')
+        .justifyContent(FlexAlign.Start);
 
-          Blank();
-          if (card.priceText.length > 0) {
+        Blank();
+
+        Row() {
+          if (card.priceText && card.priceText.length > 0) {
             Text(card.priceText)
-              .fontSize(16)
+              .fontSize(15)
               .fontWeight(FontWeight.Bold)
               .fontColor('#D85E53');
           }
+
+          Blank();
+
+          Image($r('app.media.nav_third_icon_only_active'))
+            .width(20)
+            .height(20)
+            .objectFit(ImageFit.Contain)
+            .onClick(() => {
+              this.handleAddToCart(card);
+            });
         }
         .width('100%')
         .alignItems(VerticalAlign.Center);
       }
-      .height(this.featuredRecommendCardRowHeight())
-      .padding({ left: this.featuredScale(8), right: this.featuredScale(4), top: this.featuredScale(3) })
+      .padding({ left: this.featuredScale(6), right: this.featuredScale(6), bottom: this.featuredScale(8) })
       .layoutWeight(1);
     }
-    .width(this.featuredRecommendGroupWidth() - this.featuredScale(16))
-    .height(this.featuredRecommendCardRowHeight())
+    .width(this.featuredRecommendCardWidth())
+    .height(this.featuredRecommendCardHeight())
+    .backgroundColor(Colors.cardBackground)
+    .borderRadius(this.featuredScale(6))
+    .margin({ bottom: this.featuredScale(12) })
     .onClick(() => {
       void index;
       NavService.go(AppRoute.PRODUCT_DETAIL);
@@ -2359,11 +2156,17 @@ export struct HomeFeaturePage {
       .onClick(() => {
         this.activeNav = index;
         this.navTabsController.changeIndex(tabIndex);
-        if (index === 1) {
+        if (index === 0) {
+          this.currentRoute = AppRoute.HOME;
+          NavService.go(AppRoute.HOME);
+        } else if (index === 1) {
+          this.currentRoute = AppRoute.FILTER;
           NavService.go(AppRoute.FILTER);
         } else if (index === 2) {
+          this.currentRoute = AppRoute.CART;
           NavService.go(AppRoute.CART);
         } else if (index === 3) {
+          this.currentRoute = AppRoute.PROFILE;
           NavService.go(AppRoute.PROFILE);
         }
       });
@@ -2376,7 +2179,9 @@ export struct HomeFeaturePage {
       .height('100%')
       .onClick(() => {
         this.activeNav = 0;
+        this.currentRoute = AppRoute.HOME;
         this.navTabsController.changeIndex(0);
+        NavService.go(AppRoute.HOME);
       });
   }
 

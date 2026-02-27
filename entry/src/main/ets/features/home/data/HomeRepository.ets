@@ -1,6 +1,24 @@
 import { HttpClient } from '../../../core/network/HttpClient';
 import { createGetRequest } from '../../../core/network/Interceptors';
 
+export class FeaturedListCard {
+  title?: string = '';
+  name?: string = '';
+  subtitle: string = '';
+  image?: string = '';
+  imageUrl?: string = '';
+  price?: string = '';
+  priceText?: string = '';
+  marketPrice?: string = '';
+  buttonText?: string = '';
+  marketingText?: string = '';
+  soldCountText?: string = '';
+  badgePrimary?: string = '';
+  badgeSecondary?: string = '';
+  linkValue?: string = '';
+  sort?: number = 0;
+}
+
 export class HealthData {
   status: string = '';
 }
