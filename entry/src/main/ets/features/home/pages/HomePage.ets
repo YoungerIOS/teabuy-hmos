@@ -19,11 +19,14 @@ import {
 import { AuthRepository } from '../../auth/data/AuthRepository';
 import { UserStore } from '../../../core/store/UserStore';
 import { ReviewListPage } from '../../review/pages/ReviewListPage';
+import { ReviewDetailPage } from '../../review/pages/ReviewDetailPage';
 import { BannerCarousel } from '../../../core/ui/components/BannerCarousel';
 import { FilterPage } from '../../filter/pages/FilterPage';
 import { CartPage } from '../../cart/pages/CartPage';
 import { CartItem } from '../../cart/data/CartRepository';
 import { CheckoutPage } from '../../order/pages/CheckoutPage';
+import { ProfilePage } from '../../profile/pages/ProfilePage';
+import { ProductDetailPage } from '../../product/pages/ProductDetailPage';
 class ReviewTopic {
   title: string = '';
   imageUrl: string = '';
@@ -294,7 +297,7 @@ export struct HomeFeaturePage {
   @State private authResult: string = '-';
   @State private bannerModuleTitle: string = '推荐';
   @State private reviewSectionTitle: string = '茶评';
-  @State private newTeaSectionTitle: string = '新茶上市';
+  @State private selectedTeaDetail: string = "银针绿茶";  @State private newTeaSectionTitle: string = '新茶上市';
   @State private newTeaNotice: string = '限量好茶免费品，品出慢时光';
 
   @State private featuredTabs: FeaturedTab[] = [
@@ -324,6 +327,11 @@ export struct HomeFeaturePage {
     } catch (err) {
       // Ignored
     }
+  }
+
+  private goProductDetail(): void {
+    this.currentRoute = AppRoute.PRODUCT_DETAIL;
+    NavService.go(AppRoute.PRODUCT_DETAIL);
   }
 
   @State private featuredSections: FeaturedSection[] = [
@@ -721,6 +729,21 @@ export struct HomeFeaturePage {
       if (this.currentRoute === AppRoute.REVIEW_LIST) {
         ReviewListPage({
           teaName: this.selectedReviewTea,
+          selectedTeaDetail: $selectedTeaDetail,
+          currentRoute: $currentRoute
+        })
+          .width('100%')
+          .height('100%');
+      } else if (this.currentRoute === AppRoute.REVIEW_DETAIL) {
+        ReviewDetailPage({
+          teaName: this.selectedReviewTea,
+          selectedTeaDetail: $selectedTeaDetail,
+          currentRoute: $currentRoute
+        })
+          .width('100%')
+          .height('100%');
+      } else if (this.currentRoute === AppRoute.PRODUCT_DETAIL) {
+        ProductDetailPage({
           currentRoute: $currentRoute
         })
           .width('100%')
@@ -741,6 +764,12 @@ export struct HomeFeaturePage {
               .layoutWeight(1);
           } else if (this.currentRoute === AppRoute.CART) {
             CartPage({
+              currentRoute: $currentRoute
+            })
+              .width('100%')
+              .layoutWeight(1);
+          } else if (this.currentRoute === AppRoute.PROFILE) {
+            ProfilePage({
               currentRoute: $currentRoute
             })
               .width('100%')
@@ -1958,7 +1987,7 @@ export struct HomeFeaturePage {
     .borderRadius(this.featuredScale(8))
     .onClick(() => {
       void index;
-      NavService.go(AppRoute.PRODUCT_DETAIL);
+      this.goProductDetail();
     });
   }
 
@@ -1970,9 +1999,10 @@ export struct HomeFeaturePage {
           this.FeaturedRecommendCard(card, index);
         }, (card: FeaturedListCard, index: number) => (card.name || '') + (card.linkValue || '') + index);
       }
-      .width(this.featuredRecommendGroupWidth())
+      .width('100%')
       .backgroundColor('#EEF4ED')
-      .margin({ left: this.featuredMainLeft(), top: this.featuredScale(25) });
+      .padding({ left: this.featuredMainLeft(), right: this.featuredMainLeft() })
+      .margin({ top: this.featuredScale(25) });
     }
   }
 
@@ -2070,7 +2100,7 @@ export struct HomeFeaturePage {
     .margin({ bottom: this.featuredScale(12) })
     .onClick(() => {
       void index;
-      NavService.go(AppRoute.PRODUCT_DETAIL);
+      this.goProductDetail();
     });
   }
 

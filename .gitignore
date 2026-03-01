@@ -11,3 +11,18 @@
 **/.test
 /.appanalyzer
 entry/src/main/resources/base/media/.DS_Store
+
+# macOS system files
+.DS_Store
+**/.DS_Store
+
+# IDE and editor files
+.vscode/
+
+# Temporary files
+.agents/tmp/
+tmp*.png
+*.backup
+
+# Build artifacts
+*.svg
