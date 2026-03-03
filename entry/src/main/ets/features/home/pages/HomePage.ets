@@ -22,11 +22,13 @@ import { ReviewListPage } from '../../review/pages/ReviewListPage';
 import { ReviewDetailPage } from '../../review/pages/ReviewDetailPage';
 import { BannerCarousel } from '../../../core/ui/components/BannerCarousel';
 import { FilterPage } from '../../filter/pages/FilterPage';
+import { ProductListPage } from '../../filter/pages/ProductListPage';
 import { CartPage } from '../../cart/pages/CartPage';
 import { CartItem } from '../../cart/data/CartRepository';
 import { CheckoutPage } from '../../order/pages/CheckoutPage';
 import { ProfilePage } from '../../profile/pages/ProfilePage';
 import { ProductDetailPage } from '../../product/pages/ProductDetailPage';
+  import { ProductCard } from '../../../shared/components/ProductCard';
 class ReviewTopic {
   title: string = '';
   imageUrl: string = '';
@@ -549,7 +551,7 @@ export struct HomeFeaturePage {
           sort: 1,
           cards: [
             {
-              name: '嘉应普洱茶',
+              name: '嘉应普洱茶 客家普洱茶',
               subtitle: '客家普洱茶',
               marketingText: '新品上市',
               soldCountText: '114214人买过',
@@ -561,7 +563,7 @@ export struct HomeFeaturePage {
               buttonText: ''
             } as FeaturedListCard,
             {
-              name: '嘉应菊花茶',
+              name: '嘉应菊花茶 嘉应丰顺茶饼',
               subtitle: '嘉应丰顺茶饼',
               marketingText: '限时折扣',
               soldCountText: '114244人买过',
@@ -762,6 +764,12 @@ export struct HomeFeaturePage {
             })
               .width('100%')
               .layoutWeight(1);
+            } else if (this.currentRoute === AppRoute.PRODUCT_LIST) {
+              ProductListPage({
+                currentRoute: $currentRoute
+              })
+                .width('100%')
+                .layoutWeight(1);
           } else if (this.currentRoute === AppRoute.CART) {
             CartPage({
               currentRoute: $currentRoute
@@ -1744,15 +1752,15 @@ export struct HomeFeaturePage {
   }
 
   private featuredRecommendCardWidth(): number {
-    return this.featuredScale(161);
+    return 161;
   }
 
   private featuredRecommendCardHeight(): number {
-    return this.featuredScale(224);
+    return 245;
   }
 
   private featuredRecommendCardImageHeight(): number {
-    return this.featuredScale(149);
+    return 149;
   }
 
   private featuredTopTabsDisplay(): FeaturedTab[] {
@@ -1996,7 +2004,18 @@ export struct HomeFeaturePage {
     if (this.featuredRecommendPrimaryCards().length > 0) {
       Flex({ wrap: FlexWrap.Wrap, justifyContent: FlexAlign.SpaceBetween }) {
         ForEach(this.featuredRecommendPrimaryCards(), (card: FeaturedListCard, index: number) => {
-          this.FeaturedRecommendCard(card, index);
+            ProductCard({
+              card: card,
+              cardWidth: this.featuredRecommendCardWidth(),
+              cardHeight: this.featuredRecommendCardHeight(),
+              cardImageHeight: this.featuredRecommendCardImageHeight(),
+              onAddToCart: () => {
+                this.handleAddToCart(card);
+              },
+              onCardClick: () => {
+                this.goProductDetail();
+              }
+            })
         }, (card: FeaturedListCard, index: number) => (card.name || '') + (card.linkValue || '') + index);
       }
       .width('100%')

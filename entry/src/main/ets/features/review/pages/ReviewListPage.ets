@@ -18,7 +18,7 @@
     @Link selectedTeaDetail: string;
 
     private readonly statusBarMaskHeight: number = 44;
-    private readonly headerTopInset: number = 56;
+    private readonly headerTopInset: number = 41;
     private readonly headerHeight: number = 52;
     private readonly cloudLeftX: number = 42;
     private readonly cloudLeftY: number = 385;
@@ -177,15 +177,10 @@
         .position({ x: 0, y: 104 });
 
         Row() {
-          Row() {
-            Text('‹')
-              .fontSize(28)
-              .fontColor(Colors.cardBackground);
-          }
-          .width(44)
-          .height(44)
-          .justifyContent(FlexAlign.Center)
-          .alignItems(VerticalAlign.Center)
+          Image($r('app.media.product_icon_back_3x'))
+            .width(20)
+            .height(20)
+            .fillColor(Colors.cardBackground)
             .onClick(() => {
               this.currentRoute = AppRoute.HOME;
               NavService.go(AppRoute.HOME);
@@ -200,7 +195,7 @@
         }
         .width('100%')
         .height(this.headerHeight)
-        .padding({ left: 12, right: 12 })
+        .padding({ left: 18, right: 11 })
         .alignItems(VerticalAlign.Center)
         .position({ x: 0, y: this.headerTopInset });
 

@@ -47,18 +47,17 @@ export struct FilterPage {
                       .backgroundColor('#97C9C0')
                       .borderRadius(1.5)
                       .margin({ right: 6 });
-                  } else {
-                    Row().width(9);
                   }
-                  
+
                   Text(item)
                     .fontSize(this.selectedCategoryIndex === index ? 20 : 16)
                     .fontColor(Color.White)
-                    .fontWeight(this.selectedCategoryIndex === index ? FontWeight.Bold : FontWeight.Normal)
-                    .layoutWeight(1);
+                    .fontWeight(this.selectedCategoryIndex === index ? FontWeight.Bold : FontWeight.Normal);
                 }
                 .width('100%')
                 .height(60)
+                .justifyContent(FlexAlign.Center)
+                .padding({right: 5})
                 .onClick(() => {
                   this.selectedCategoryIndex = index;
                 })
@@ -100,8 +99,8 @@ export struct FilterPage {
             }
             .layoutWeight(1)
             .height(38)
-            .backgroundColor('rgba(69, 103, 101, 0.06)')
-            .borderRadius(20)
+            .backgroundColor('rgba(113, 173, 145, 0.3)')
+            .borderRadius(6)
             .padding({ left: 12, right: 12 })
             .alignItems(VerticalAlign.Center);
           }
@@ -217,6 +216,11 @@ export struct FilterPage {
     }
     .width(70)
     .margin({ bottom: 16 })
-    .alignItems(HorizontalAlign.Center);
+    .alignItems(HorizontalAlign.Center)
+    .onClick(() => {
+      // 点击分类图片跳转到产品列表页面
+      this.currentRoute = AppRoute.PRODUCT_LIST;
+      NavService.go(AppRoute.PRODUCT_LIST);
+    });
   }
 }

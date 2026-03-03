@@ -245,11 +245,11 @@
           .textAlign(TextAlign.Center);
 
         // 返回按钮
-        Image($r('app.media.review_detail_back'))
-          .width(16)
-          .height(16)
-          .objectFit(ImageFit.Contain)
-          .position({ x: 18, y: 63 })
+        Image($r('app.media.product_icon_back_3x'))
+          .width(20)
+          .height(20)
+          .fillColor(Color.White)
+          .position({ x: 18, y: 57 })
           .onClick(() => {
             this.currentRoute = AppRoute.REVIEW_LIST;
             NavService.go(AppRoute.REVIEW_LIST);

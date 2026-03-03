@@ -1,4 +1,5 @@
 import { AppRoute } from '../../../router/RouteMap';
+import { NavService } from '../../../router/NavService';
 
 interface ReviewItem {
   name: string;
@@ -58,11 +59,13 @@ export struct ProductDetailPage {
     Column() {
       Row() {
         Image($r('app.media.product_icon_back_3x'))
-          .width(this.s(22))
-          .height(this.s(22))
+          .width(20)
+          .height(20)
           .objectFit(ImageFit.Contain)
           .onClick(() => {
-            this.currentRoute = AppRoute.HOME;
+            // 返回上一页
+            NavService.back();
+            this.currentRoute = NavService.getCurrentRoute();
           });
 
         Row({ space: this.s(56) }) {
@@ -72,19 +75,19 @@ export struct ProductDetailPage {
         }
 
         Image($r('app.media.product_icon_share_3x'))
-          .width(this.s(28))
-          .height(this.s(28))
+          .width(28)
+          .height(28)
           .objectFit(ImageFit.Contain);
       }
       .width('100%')
-      .height(this.s(30))
-      .padding({ left: this.s(18), right: this.s(11) })
+      .height(30)
+      .padding({ left: 18, right: 11 })
       .justifyContent(FlexAlign.SpaceBetween)
       .alignItems(VerticalAlign.Center);
     }
     .width('100%')
-    .height(this.s(81))
-    .padding({ top: this.s(41) })
+    .height(81)
+    .padding({ top: 41 })
     .linearGradient({
       direction: GradientDirection.Bottom,
       colors: [['#97C9C0', 0], ['#71AD91', 1]]

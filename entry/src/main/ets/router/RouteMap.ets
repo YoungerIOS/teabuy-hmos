@@ -2,6 +2,7 @@ export enum AppRoute {
   LOGIN = 'login',
   HOME = 'home',
   FILTER = 'filter',
+  PRODUCT_LIST = 'product_list',
   PRODUCT_DETAIL = 'product_detail',
   CART = 'cart',
   CHECKOUT = 'checkout',
