@@ -10,5 +10,7 @@ export enum AppRoute {
   REVIEW_LIST = 'review_list',
   REVIEW_DETAIL = 'review_detail',
   PROFILE = 'profile',
+  SETTINGS = 'settings',
+  WEBVIEW = 'webview',
   NETWORK_LOST = 'network_lost'
 }

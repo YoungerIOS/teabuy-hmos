@@ -19,6 +19,36 @@ export class FeaturedListCard {
   sort?: number = 0;
 }
 
+export class ProductItem {
+  id: string = '';
+  name: string = '';
+  subtitle: string = '';
+  categoryId: string = '';
+  imageUrl: string = '';
+  priceCent: number = 0;
+  priceText: string = '';
+  marketPriceCent: number = 0;
+  soldCount: number = 0;
+  badgePrimary: string = '';
+  badgeSecondary: string = '';
+  status: string = '';
+  stock: number = 0;
+}
+
+export class ProductItemHelper {
+  static toFeaturedListCard(item: ProductItem): FeaturedListCard {
+    const card = new FeaturedListCard();
+    card.name = item.name;
+    card.subtitle = item.subtitle;
+    card.imageUrl = item.imageUrl;
+    card.priceText = item.priceText;
+    card.soldCountText = `${item.soldCount}人买过`;
+    card.badgePrimary = item.badgePrimary;
+    card.badgeSecondary = item.badgeSecondary;
+    return card;
+  }
+}
+
 export class HealthData {
   status: string = '';
 }
@@ -113,6 +143,42 @@ export class HomeData {
   banners: HomeBannerData[] = [];
 }
 
+export class CategoryItem {
+  key: string = '';
+  name: string = '';
+  iconUrl: string = '';
+  linkType: string = '';
+  linkValue: string = '';
+  sort: number = 0;
+}
+
+export class CategoryData {
+  title: string = '';
+  items: CategoryItem[] = [];
+  updatedAt: number = 0;
+}
+
+export class NavigationResolveData {
+  route: string = '';
+  params: Record<string, string> = {};
+}
+
+export class ProductListData {
+  items: ProductItem[] = [];
+  total: number = 0;
+  page: number = 1;
+  pageSize: number = 20;
+}
+
+export interface ProductQueryParams {
+  keyword?: string;
+  categoryKey?: string;
+  activityKey?: string;
+  topicKey?: string;
+  page?: number;
+  pageSize?: number;
+}
+
 export class HomeRepository {
   static async getHealth(): Promise<HealthData> {
     const req = createGetRequest('/health');
@@ -129,6 +195,55 @@ export class HomeRepository {
   static async getHome(): Promise<HomeData> {
     const req = createGetRequest('/home');
     const result = await HttpClient.request<HomeData>(req);
+    return result.data;
+  }
+
+  static async getCategories(): Promise<CategoryData> {
+    const req = createGetRequest('/home/categories');
+    const result = await HttpClient.request<CategoryData>(req);
+    return result.data;
+  }
+
+  static async resolveNavigation(linkType: string, linkValue?: string): Promise<NavigationResolveData> {
+    let path = `/navigation/resolve?linkType=${linkType}`;
+    if (linkValue) {
+      path += `&linkValue=${encodeURIComponent(linkValue)}`;
+    }
+    const req = createGetRequest(path);
+    const result = await HttpClient.request<NavigationResolveData>(req);
+    return result.data;
+  }
+
+  static async getProducts(params?: ProductQueryParams): Promise<ProductListData> {
+    let path = '/catalog/products?';
+    const queryParams: string[] = [];
+    
+    if (params?.keyword) {
+      queryParams.push(`keyword=${encodeURIComponent(params.keyword)}`);
+    }
+    if (params?.categoryKey) {
+      queryParams.push(`categoryKey=${encodeURIComponent(params.categoryKey)}`);
+    }
+    if (params?.activityKey) {
+      queryParams.push(`activityKey=${encodeURIComponent(params.activityKey)}`);
+    }
+    if (params?.topicKey) {
+      queryParams.push(`topicKey=${encodeURIComponent(params.topicKey)}`);
+    }
+    if (params?.page) {
+      queryParams.push(`page=${params.page}`);
+    } else {
+      queryParams.push('page=1');
+    }
+    if (params?.pageSize) {
+      queryParams.push(`pageSize=${params.pageSize}`);
+    } else {
+      queryParams.push('pageSize=20');
+    }
+    
+    path += queryParams.join('&');
+    const req = createGetRequest(path);
+    const result = await HttpClient.request<ProductListData>(req);
     return result.data;
   }
 }

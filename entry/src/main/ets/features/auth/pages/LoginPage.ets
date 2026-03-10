@@ -2,14 +2,19 @@ import { Colors } from '../../../core/ui/theme/Tokens';
 import { AuthRepository } from '../data/AuthRepository';
 import { UserStore } from '../../../core/store/UserStore';
 import { ApiConfig } from '../../../core/network/ApiConfig';
+import { AppRoute } from '../../../router/RouteMap';
+import { NavService } from '../../../router/NavService';
 
 @Component
 export struct LoginPage {
   @Link isLoggedIn: boolean;
+  @Link currentRoute: AppRoute;
+  @Link activeNav: number;
   @State private username: string = ApiConfig.debugUsername;
   @State private password: string = ApiConfig.debugPassword;
   @State private loading: boolean = false;
   @State private errorText: string = '';
+  @State private isRegisterMode: boolean = false;
 
   private async submitLogin(): Promise<void> {
     if (this.loading) {
@@ -22,13 +27,27 @@ export struct LoginPage {
     this.loading = true;
     this.errorText = '';
     try {
-      const data = await AuthRepository.login(this.username.trim(), this.password);
-      UserStore.setSession(data.accessToken, data.user.id);
-      this.isLoggedIn = true;
+      if (this.isRegisterMode) {
+        // 注册
+        const data = await AuthRepository.register(this.username.trim(), this.password);
+        UserStore.setSession(data.accessToken, data.user.id);
+        this.isLoggedIn = true;
+        this.activeNav = 0;
+        this.currentRoute = AppRoute.HOME;
+        NavService.go(AppRoute.HOME);
+      } else {
+        // 登录
+        const data = await AuthRepository.login(this.username.trim(), this.password);
+        UserStore.setSession(data.accessToken, data.user.id);
+        this.isLoggedIn = true;
+        this.activeNav = 0;
+        this.currentRoute = AppRoute.HOME;
+        NavService.go(AppRoute.HOME);
+      }
     } catch (err) {
       const value = err as Record<string, Object>;
       const msgObj = value['message'];
-      this.errorText = msgObj !== undefined && msgObj !== null ? `${msgObj}` : '登录失败，请稍后重试';
+      this.errorText = msgObj !== undefined && msgObj !== null ? `${msgObj}` : (this.isRegisterMode ? '注册失败，请稍后重试' : '登录失败，请稍后重试');
     } finally {
       this.loading = false;
     }
@@ -91,7 +110,7 @@ export struct LoginPage {
               .maxLines(2);
           }
 
-          Button(this.loading ? '登录中...' : '登录')
+          Button(this.loading ? (this.isRegisterMode ? '注册中...' : '登录中...') : (this.isRegisterMode ? '注册' : '登录'))
             .width('100%')
             .height(46)
             .fontSize(16)
@@ -103,6 +122,20 @@ export struct LoginPage {
             .onClick(() => {
               this.submitLogin();
             });
+
+          // 切换登录/注册模式
+          Row() {
+            Text(this.isRegisterMode ? '已有账号?立即登录' : '还没有账号?立即注册')
+              .fontSize(14)
+              .fontColor(Colors.brandAccent)
+              .onClick(() => {
+                this.isRegisterMode = !this.isRegisterMode;
+                this.errorText = '';
+              });
+          }
+          .width('100%')
+          .justifyContent(FlexAlign.Center)
+          .margin({ top: 16 });
         }
         .width('100%')
         .padding(16)

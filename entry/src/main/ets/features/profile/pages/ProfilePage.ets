@@ -1,4 +1,5 @@
 import { AppRoute } from '../../../router/RouteMap';
+import { NavService } from '../../../router/NavService';
 
 @Component
 export struct ProfilePage {
@@ -186,6 +187,8 @@ export struct ProfilePage {
       .justifyContent(FlexAlign.End)
       .alignItems(VerticalAlign.Center)
       .onClick(() => {
+        this.currentRoute = AppRoute.SETTINGS;
+        NavService.go(AppRoute.SETTINGS);
       });
     }
       .width('100%')

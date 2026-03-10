@@ -14,12 +14,16 @@ import {
   HomeNewTeaItemData,
   HomeRepository,
   HomeReviewTopicData,
-  FeaturedListCard
+  FeaturedListCard,
+  CategoryItem,
+  CategoryData
 } from '../data/HomeRepository';
 import { AuthRepository } from '../../auth/data/AuthRepository';
 import { UserStore } from '../../../core/store/UserStore';
 import { ReviewListPage } from '../../review/pages/ReviewListPage';
+import { AddressPage } from '../../order/pages/AddressPage';
 import { ReviewDetailPage } from '../../review/pages/ReviewDetailPage';
+import { WebViewPage } from '../../webview/pages/WebViewPage';
 import { BannerCarousel } from '../../../core/ui/components/BannerCarousel';
 import { FilterPage } from '../../filter/pages/FilterPage';
 import { ProductListPage } from '../../filter/pages/ProductListPage';
@@ -27,6 +31,8 @@ import { CartPage } from '../../cart/pages/CartPage';
 import { CartItem } from '../../cart/data/CartRepository';
 import { CheckoutPage } from '../../order/pages/CheckoutPage';
 import { ProfilePage } from '../../profile/pages/ProfilePage';
+import { SettingsPage } from '../../profile/pages/SettingsPage';
+import { LoginPage } from '../../auth/pages/LoginPage';
 import { ProductDetailPage } from '../../product/pages/ProductDetailPage';
   import { ProductCard } from '../../../shared/components/ProductCard';
 class ReviewTopic {
@@ -290,7 +296,14 @@ export struct HomeFeaturePage {
   @State private activeTopTab: number = 0;
   @State private activeCategory: number = 0;
   @State private activeNav: number = 0;
-  @State private currentRoute: AppRoute = AppRoute.HOME;
+  @Link currentRoute: AppRoute;
+  @State @Watch('onLoggedIn') private isLoggedIn: boolean = UserStore.isLoggedIn();
+
+  private onLoggedIn(): void {
+    if (this.isLoggedIn && this.currentRoute === AppRoute.LOGIN) {
+      this.currentRoute = AppRoute.HOME;
+    }
+  }
   @State private safeBottomInset: number = 0;
   @State private homeContentWidth: number = 375;
   @State private healthResult: string = '-';
@@ -604,7 +617,8 @@ export struct HomeFeaturePage {
   // Fallback bottom inset for devices/simulators where avoid-area API reports 0 in immersive mode.
   private readonly safeBottomFallback: number = 10;
 
-  private readonly categoryTabs: string[] = ['袋茶', '包茶', '茶具', '茶制品'];
+  @State private categoryTabs: string[] = ['袋茶', '包茶', '茶具', '茶制品'];
+  @State private categoryItems: CategoryItem[] = [];
   private readonly reviewHeaderTopOffset: number = 8;
   private readonly reviewCardSize: number = 68;
   private readonly reviewCardGap: number = 12;
@@ -728,10 +742,24 @@ export struct HomeFeaturePage {
 
   build() {
     Stack({ alignContent: Alignment.Bottom }) {
-      if (this.currentRoute === AppRoute.REVIEW_LIST) {
+      if (this.currentRoute === AppRoute.LOGIN) {
+        LoginPage({
+          isLoggedIn: $isLoggedIn,
+          currentRoute: $currentRoute,
+          activeNav: $activeNav
+        })
+          .width('100%')
+          .height('100%');
+      } else if (this.currentRoute === AppRoute.REVIEW_LIST) {
         ReviewListPage({
           teaName: this.selectedReviewTea,
           selectedTeaDetail: $selectedTeaDetail,
+          currentRoute: $currentRoute
+        })
+          .width('100%')
+          .height('100%');
+      } else if (this.currentRoute === AppRoute.WEBVIEW) {
+        WebViewPage({
           currentRoute: $currentRoute
         })
           .width('100%')
@@ -746,6 +774,12 @@ export struct HomeFeaturePage {
           .height('100%');
       } else if (this.currentRoute === AppRoute.PRODUCT_DETAIL) {
         ProductDetailPage({
+          currentRoute: $currentRoute
+        })
+          .width('100%')
+          .height('100%');
+      } else if (this.currentRoute === AppRoute.ADDRESS) {
+        AddressPage({
           currentRoute: $currentRoute
         })
           .width('100%')
@@ -778,6 +812,12 @@ export struct HomeFeaturePage {
               .layoutWeight(1);
           } else if (this.currentRoute === AppRoute.PROFILE) {
             ProfilePage({
+              currentRoute: $currentRoute
+            })
+              .width('100%')
+              .layoutWeight(1);
+          } else if (this.currentRoute === AppRoute.SETTINGS) {
+            SettingsPage({
               currentRoute: $currentRoute
             })
               .width('100%')
@@ -1208,6 +1248,19 @@ export struct HomeFeaturePage {
   aboutToAppear(): void {
     this.refreshSafeBottomInset();
     this.loadHomeModulesAsync();
+    this.loadCategories();
+  }
+
+  private async loadCategories(): Promise<void> {
+    try {
+      const categoryData = await HomeRepository.getCategories();
+      if (categoryData && categoryData.items && categoryData.items.length > 0) {
+        this.categoryItems = categoryData.items;
+        this.categoryTabs = categoryData.items.map(item => item.name);
+      }
+    } catch (error) {
+      console.error('Failed to load categories:', error);
+    }
   }
 
   private loadHomeModulesAsync(): void {
@@ -1272,6 +1325,21 @@ export struct HomeFeaturePage {
     return 48;
   }
 
+  private routeFromString(route: string): AppRoute {
+    switch (route) {
+      case 'product_list':
+        return AppRoute.PRODUCT_LIST;
+      case 'product_detail':
+        return AppRoute.PRODUCT_DETAIL;
+      case 'review_list':
+        return AppRoute.REVIEW_LIST;
+      case 'webview':
+        return AppRoute.WEBVIEW;
+      default:
+        return AppRoute.HOME;
+    }
+  }
+
   private categoryIconWidth(index: number): number {
     if (index === 0) {
       return 31;
@@ -1323,8 +1391,46 @@ export struct HomeFeaturePage {
         .fontColor(this.activeCategory === index ? Colors.brandPrimary : '#4D716F');
     }
     .width(this.categoryItemWidth(index))
-    .onClick(() => {
+    .onClick(async () => {
       this.activeCategory = index;
+      
+      // 先解析导航,获取正确的路由和参数
+      if (this.categoryItems.length > 0 && this.categoryItems[index]) {
+        const item = this.categoryItems[index];
+        try {
+          const navData = await HomeRepository.resolveNavigation(item.linkType, item.linkValue);
+          console.log('Navigation resolved:', navData.route, navData.params);
+          
+          // 根据解析结果跳转
+          const targetRoute = this.routeFromString(navData.route);
+          
+          // 如果是 webview,检查 URL 是否有效
+          if (targetRoute === AppRoute.WEBVIEW) {
+            const url = navData.params?.url || '';
+            if (url.startsWith('http://') || url.startsWith('https://')) {
+              // URL 有效,跳转到 WebView
+              this.currentRoute = targetRoute;
+              NavService.go(targetRoute, navData.params);
+            } else {
+              // URL 无效,提示用户
+              console.error('Invalid URL for webview:', url);
+              promptAction.showToast({
+                message: '链接配置错误,无法打开',
+                duration: 2000
+              });
+            }
+          } else {
+            // 其他路由正常跳转
+            this.currentRoute = targetRoute;
+            NavService.go(targetRoute, navData.params);
+          }
+        } catch (error) {
+          console.error('Failed to resolve navigation:', error);
+          // 失败时默认跳转到商品列表
+          this.currentRoute = AppRoute.PRODUCT_LIST;
+          NavService.go(AppRoute.PRODUCT_LIST);
+        }
+      }
     });
   }
 
@@ -1827,8 +1933,29 @@ export struct HomeFeaturePage {
     return section.items[0];
   }
 
+  private featuredRecommendSecondaryItem(): FeaturedItem | undefined {
+    const section = this.featuredGetSection('recommend_list');
+    if (section === undefined || section.items.length < 2) {
+      return undefined;
+    }
+    return section.items[1];
+  }
+
   private featuredRecommendPrimaryCards(): FeaturedListCard[] {
     const item = this.featuredRecommendPrimaryItem();
+    const itemCards = item?.cards;
+    if (itemCards === undefined || itemCards.length === 0) {
+      return [];
+    }
+    const cards: FeaturedListCard[] = [];
+    for (let i = 0; i < itemCards.length && i < 2; i++) {
+      cards.push(itemCards[i]);
+    }
+    return cards;
+  }
+
+  private featuredRecommendSecondaryCards(): FeaturedListCard[] {
+    const item = this.featuredRecommendSecondaryItem();
     const itemCards = item?.cards;
     if (itemCards === undefined || itemCards.length === 0) {
       return [];
@@ -1899,9 +2026,45 @@ export struct HomeFeaturePage {
         .maxLines(1);
     }
     .width(this.featuredCircleItemSize())
-    .onClick(() => {
-      void index;
-      NavService.go(AppRoute.PRODUCT_DETAIL);
+    .onClick(async () => {
+      // 调用导航解析接口
+      if (item.linkType && item.linkValue) {
+        try {
+          const navData = await HomeRepository.resolveNavigation(item.linkType, item.linkValue);
+          console.log('Circle item navigation resolved:', navData.route, navData.params);
+          
+          // 根据解析结果跳转
+          const targetRoute = this.routeFromString(navData.route);
+          
+          // 如果是 webview,检查 URL 是否有效
+          if (targetRoute === AppRoute.WEBVIEW) {
+            const url = navData.params?.url || '';
+            if (url.startsWith('http://') || url.startsWith('https://')) {
+              this.currentRoute = targetRoute;
+              NavService.go(targetRoute, navData.params);
+            } else {
+              console.error('Invalid URL for webview:', url);
+              promptAction.showToast({
+                message: '链接配置错误,无法打开',
+                duration: 2000
+              });
+            }
+          } else {
+            // 其他路由正常跳转
+            this.currentRoute = targetRoute;
+            NavService.go(targetRoute, navData.params);
+          }
+        } catch (error) {
+          console.error('Failed to resolve navigation:', error);
+          // 失败时默认跳转到商品列表
+          this.currentRoute = AppRoute.PRODUCT_LIST;
+          NavService.go(AppRoute.PRODUCT_LIST);
+        }
+      } else {
+        // 没有配置链接,默认跳转到商品列表
+        this.currentRoute = AppRoute.PRODUCT_LIST;
+        NavService.go(AppRoute.PRODUCT_LIST);
+      }
     });
   }
 
@@ -1941,6 +2104,7 @@ export struct HomeFeaturePage {
         .margin({ top: this.featuredScale(8) });
 
         this.FeaturedRecommendPrimaryGroup();
+        this.FeaturedRecommendSecondaryGroup();
       }
       .width('100%')
       .margin({ top: this.featuredScale(16) });
@@ -2004,6 +2168,32 @@ export struct HomeFeaturePage {
     if (this.featuredRecommendPrimaryCards().length > 0) {
       Flex({ wrap: FlexWrap.Wrap, justifyContent: FlexAlign.SpaceBetween }) {
         ForEach(this.featuredRecommendPrimaryCards(), (card: FeaturedListCard, index: number) => {
+            ProductCard({
+              card: card,
+              cardWidth: this.featuredRecommendCardWidth(),
+              cardHeight: this.featuredRecommendCardHeight(),
+              cardImageHeight: this.featuredRecommendCardImageHeight(),
+              onAddToCart: () => {
+                this.handleAddToCart(card);
+              },
+              onCardClick: () => {
+                this.goProductDetail();
+              }
+            })
+        }, (card: FeaturedListCard, index: number) => (card.name || '') + (card.linkValue || '') + index);
+      }
+      .width('100%')
+      .backgroundColor('#EEF4ED')
+      .padding({ left: this.featuredMainLeft(), right: this.featuredMainLeft() })
+      .margin({ top: this.featuredScale(25) });
+    }
+  }
+
+  @Builder
+  private FeaturedRecommendSecondaryGroup() {
+    if (this.featuredRecommendSecondaryCards().length > 0) {
+      Flex({ wrap: FlexWrap.Wrap, justifyContent: FlexAlign.SpaceBetween }) {
+        ForEach(this.featuredRecommendSecondaryCards(), (card: FeaturedListCard, index: number) => {
             ProductCard({
               card: card,
               cardWidth: this.featuredRecommendCardWidth(),

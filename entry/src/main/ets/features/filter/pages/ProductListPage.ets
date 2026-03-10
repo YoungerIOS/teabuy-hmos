@@ -7,7 +7,7 @@ import { router } from '@kit.ArkUI';
 import { Colors } from '../../../core/ui/theme/Tokens';
 import { AppRoute } from '../../../router/RouteMap';
 import { NavService } from '../../../router/NavService';
-import { FeaturedListCard } from '../../home/data/HomeRepository';
+import { FeaturedListCard, HomeRepository, ProductListData, ProductQueryParams, ProductItem, ProductItemHelper } from '../../home/data/HomeRepository';
 import { ProductCard } from '../../../shared/components/ProductCard';
 
 
@@ -17,15 +17,79 @@ export struct ProductListPage {
   @State currentFilter: string = 'default'; // default, sales, price_asc, price_desc, new
   @State searchText: string = '';
   @State private pageWidth: number = 375;
+  @State private products: FeaturedListCard[] = [];
+  @State private isLoading: boolean = false;
+  @State private keyword: string = '';
+  @State private categoryKey: string = '';
+  @State private activityKey: string = '';
+  @State private topicKey: string = '';
 
-  // 缩放函数
-  private s(value: number): number {
-    return value * this.pageWidth / 375;
+  aboutToAppear(): void {
+    // 从 NavService 获取参数
+    const params = NavService.getParams();
+    console.log('ProductListPage params:', JSON.stringify(params));
+    
+    if (params) {
+      if (params.keyword) {
+        this.keyword = params.keyword;
+        this.searchText = params.keyword;
+      }
+      if (params.categoryKey) {
+        this.categoryKey = params.categoryKey;
+      }
+      if (params.activityKey) {
+        this.activityKey = params.activityKey;
+      }
+      if (params.topicKey) {
+        this.topicKey = params.topicKey;
+      }
+    }
+    
+    // 加载商品数据
+    this.loadProducts();
   }
 
+  private async loadProducts(): Promise<void> {
+    if (this.isLoading) {
+      return;
+    }
+    
+    this.isLoading = true;
+    console.log('Loading products with params:', {
+      keyword: this.keyword,
+      categoryKey: this.categoryKey,
+      activityKey: this.activityKey,
+      topicKey: this.topicKey
+    });
+    
+    try {
+      const params: ProductQueryParams = {
+        keyword: this.keyword,
+        categoryKey: this.categoryKey,
+        activityKey: this.activityKey,
+        topicKey: this.topicKey,
+        page: 1,
+        pageSize: 20
+      };
+      console.log('Calling HomeRepository.getProducts with params:', JSON.stringify(params));
+      const data = await HomeRepository.getProducts(params);
+      console.log('API response:', JSON.stringify(data));
+      
+      // 转换 ProductItem 到 FeaturedListCard
+      this.products = data.items.map((item: ProductItem) => ProductItemHelper.toFeaturedListCard(item));
+      console.log('Loaded products:', this.products.length);
+    } catch (error) {
+      console.error('Failed to load products:', error);
+      // 失败时使用模拟数据
+      this.products = this.getMockProducts();
+      console.log('Using mock products due to error');
+    } finally {
+      this.isLoading = false;
+    }
+  }
 
-    // 模拟产品数据
-    private products: FeaturedListCard[] = [
+  private getMockProducts(): FeaturedListCard[] {
+    return [
       {
         name: '嘉应茗茶 铁观音清香型阿迪发',
         imageUrl: 'https://nfzznasyztaontqmuhjq.supabase.co/storage/v1/object/public/product-images/home/home_review_bg_1.png',
@@ -39,7 +103,7 @@ export struct ProductListPage {
         priceText: '￥268/盒',
         soldCountText: '月销892',
         badgePrimary: '新品上市'
-      } as FeaturedListCard,  
+      } as FeaturedListCard,
       {
         name: '嘉应茗茶 正山小种',
         imageUrl: 'https://nfzznasyztaontqmuhjq.supabase.co/storage/v1/object/public/product-images/home/home_review_bg_3.png',
@@ -67,14 +131,20 @@ export struct ProductListPage {
         badgePrimary: '促销'
       } as FeaturedListCard
     ];
+  }
 
-    private cardHeight(): number {
-      return 245;
-    }
+  // 缩放函数
+  private s(value: number): number {
+    return value * this.pageWidth / 375;
+  }
 
-    private cardImageHeight(): number {
-      return 149;
-    }
+  private cardHeight(): number {
+    return 245;
+  }
+
+  private cardImageHeight(): number {
+    return 149;
+  }
 
 
   build() {
@@ -114,8 +184,8 @@ export struct ProductListPage {
             .height(20)
             .fillColor(Color.White)
             .onClick(() => {
-              this.currentRoute = AppRoute.FILTER;
-              NavService.go(AppRoute.FILTER);
+              NavService.back();
+              this.currentRoute = NavService.getCurrentRoute();
             })
 
         // 搜索框
