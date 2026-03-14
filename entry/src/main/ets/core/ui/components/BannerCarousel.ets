@@ -1,10 +1,15 @@
 import { AppRoute } from '../../../router/RouteMap';
 import { NavService } from '../../../router/NavService';
+import { promptAction } from '@kit.ArkUI';
 import { Colors } from '../theme/Tokens';
+import { HomeBannerData, HomeRepository, NavigationResolveData } from '../../../features/home/data/HomeRepository';
 
 @Component
 export struct BannerCarousel {
+  @Link currentRoute: AppRoute;
   @Prop bannerImages: string[] = [];
+  @Prop bannerItems: HomeBannerData[] = [];
+  @Prop bannerNavData: NavigationResolveData[] = [];
   
   // Customizable properties
   @Prop bannerWidth: number = 288;
@@ -42,6 +47,99 @@ export struct BannerCarousel {
     }
     const targetIndex = this.normalizeBannerIndex(this.activeBannerIndex + offset);
     return this.bannerImages[targetIndex];
+  }
+
+  private bannerItemAt(offset: number): HomeBannerData | null {
+    if (this.bannerItems.length === 0) {
+      return null;
+    }
+    const count = this.bannerItems.length;
+    let index = this.activeBannerIndex + offset;
+    while (index < 0) {
+      index += count;
+    }
+    while (index >= count) {
+      index -= count;
+    }
+    return this.bannerItems[index] || null;
+  }
+
+  private bannerNavAt(offset: number): NavigationResolveData | null {
+    if (this.bannerNavData.length === 0) {
+      return null;
+    }
+    const count = this.bannerNavData.length;
+    let index = this.activeBannerIndex + offset;
+    while (index < 0) {
+      index += count;
+    }
+    while (index >= count) {
+      index -= count;
+    }
+    return this.bannerNavData[index] || null;
+  }
+
+  private routeFromString(route: string): AppRoute {
+    switch (route) {
+      case 'product_list':
+        return AppRoute.PRODUCT_LIST;
+      case 'product_detail':
+        return AppRoute.PRODUCT_DETAIL;
+      case 'review_list':
+        return AppRoute.REVIEW_LIST;
+      case 'webview':
+        return AppRoute.WEBVIEW;
+      case 'order_list':
+        return AppRoute.ORDER_LIST;
+      default:
+        return AppRoute.HOME;
+    }
+  }
+
+  private async handleBannerClick(): Promise<void> {
+    const cachedNav = this.bannerNavAt(0);
+    if (cachedNav && cachedNav.route) {
+      const targetRoute = this.routeFromString(cachedNav.route);
+      if (targetRoute === AppRoute.WEBVIEW) {
+        const url = cachedNav.params?.url || '';
+        if (url.startsWith('http://') || url.startsWith('https://')) {
+          this.currentRoute = targetRoute;
+          NavService.go(targetRoute, cachedNav.params);
+        } else {
+          promptAction.showToast({ message: '链接配置错误,无法打开', duration: 2000 });
+        }
+      } else {
+        this.currentRoute = targetRoute;
+        NavService.go(targetRoute, cachedNav.params);
+      }
+      return;
+    }
+    const item = this.bannerItemAt(0);
+    if (!item || !item.linkType) {
+      this.currentRoute = AppRoute.PRODUCT_DETAIL;
+      NavService.go(AppRoute.PRODUCT_DETAIL);
+      return;
+    }
+    try {
+      const navData = await HomeRepository.resolveNavigation(item.linkType, item.linkValue);
+      const targetRoute = this.routeFromString(navData.route);
+      if (targetRoute === AppRoute.WEBVIEW) {
+        const url = navData.params?.url || '';
+        if (url.startsWith('http://') || url.startsWith('https://')) {
+          this.currentRoute = targetRoute;
+          NavService.go(targetRoute, navData.params);
+        } else {
+          promptAction.showToast({ message: '链接配置错误,无法打开', duration: 2000 });
+        }
+      } else {
+        this.currentRoute = targetRoute;
+        NavService.go(targetRoute, navData.params);
+      }
+    } catch (error) {
+      console.error('Failed to resolve banner navigation:', error);
+      this.currentRoute = AppRoute.PRODUCT_LIST;
+      NavService.go(AppRoute.PRODUCT_LIST);
+    }
   }
 
   private slideDirection(nextIndex: number): number {
@@ -86,7 +184,9 @@ export struct BannerCarousel {
           .height(this.bannerHeight)
           .borderRadius(16)
           .objectFit(ImageFit.Cover)
-          .onClick(() => NavService.go(AppRoute.PRODUCT_DETAIL));
+          .onClick(() => {
+            void this.handleBannerClick();
+          });
 
       }
       .translate({ x: this.bannerLayerOffsetX, y: 0 })
@@ -106,6 +206,9 @@ export struct BannerCarousel {
         .autoPlay(true)
         .interval(this.autoPlayInterval)
         .loop(true)
+        .onClick(() => {
+          void this.handleBannerClick();
+        })
         .opacity(0.001)
         .onChange((index: number) => {
           const dir = this.slideDirection(index);

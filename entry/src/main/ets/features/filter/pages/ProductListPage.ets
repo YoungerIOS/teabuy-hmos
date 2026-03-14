@@ -7,6 +7,7 @@ import { router } from '@kit.ArkUI';
 import { Colors } from '../../../core/ui/theme/Tokens';
 import { AppRoute } from '../../../router/RouteMap';
 import { NavService } from '../../../router/NavService';
+import { RouteParams } from '../../../router/RouteParams';
 import { FeaturedListCard, HomeRepository, ProductListData, ProductQueryParams, ProductItem, ProductItemHelper } from '../../home/data/HomeRepository';
 import { ProductCard } from '../../../shared/components/ProductCard';
 
@@ -403,8 +404,21 @@ export struct ProductListPage {
                 ProductCard({
                   card: card,
                   onCardClick: () => {
+                    const params = new RouteParams();
+                    if (card.id && card.id.length > 0) {
+                      params.productId = card.id;
+                    }
+                    if (card.name && card.name.length > 0) {
+                      params.name = card.name;
+                    }
+                    if (card.priceText && card.priceText.length > 0) {
+                      params.priceText = card.priceText;
+                    }
+                    if (card.imageUrl && card.imageUrl.length > 0) {
+                      params.imageUrl = card.imageUrl;
+                    }
                     this.currentRoute = AppRoute.PRODUCT_DETAIL;
-                    NavService.go(AppRoute.PRODUCT_DETAIL);
+                    NavService.go(AppRoute.PRODUCT_DETAIL, params);
                   }
                 })
                 }

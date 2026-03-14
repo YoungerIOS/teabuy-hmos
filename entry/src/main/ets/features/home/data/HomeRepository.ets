@@ -1,7 +1,10 @@
 import { HttpClient } from '../../../core/network/HttpClient';
 import { createGetRequest } from '../../../core/network/Interceptors';
+import { RouteParams } from '../../../router/RouteParams';
 
 export class FeaturedListCard {
+  skuId?: string = '';
+  id?: string = '';
   title?: string = '';
   name?: string = '';
   subtitle: string = '';
@@ -25,6 +28,7 @@ export class ProductItem {
   subtitle: string = '';
   categoryId: string = '';
   imageUrl: string = '';
+  defaultSkuId: string = '';
   priceCent: number = 0;
   priceText: string = '';
   marketPriceCent: number = 0;
@@ -38,15 +42,50 @@ export class ProductItem {
 export class ProductItemHelper {
   static toFeaturedListCard(item: ProductItem): FeaturedListCard {
     const card = new FeaturedListCard();
+    card.id = item.id;
     card.name = item.name;
     card.subtitle = item.subtitle;
     card.imageUrl = item.imageUrl;
+    card.skuId = item.defaultSkuId;
     card.priceText = item.priceText;
     card.soldCountText = `${item.soldCount}人买过`;
     card.badgePrimary = item.badgePrimary;
     card.badgeSecondary = item.badgeSecondary;
     return card;
   }
+}
+
+export class ProductSkuItem {
+  id: string = '';
+  name: string = '';
+  priceCent: number = 0;
+  priceText: string = '';
+  stock: number = 0;
+}
+
+export class ProductRecommendationItem {
+  id: string = '';
+  name: string = '';
+  subtitle: string = '';
+  imageUrl: string = '';
+  priceCent: number = 0;
+}
+
+export class ProductDetailData {
+  id: string = '';
+  name: string = '';
+  subtitle: string = '';
+  description: string = '';
+  status: string = '';
+  marketPriceCent: number = 0;
+  soldCount: number = 0;
+  badgePrimary: string = '';
+  badgeSecondary: string = '';
+  mainImageUrl: string = '';
+  images: string[] = [];
+  serviceTags: string[] = [];
+  skus: ProductSkuItem[] = [];
+  recommendations: ProductRecommendationItem[] = [];
 }
 
 export class HealthData {
@@ -64,6 +103,8 @@ export class HomeNewTeaItemData {
   subtitle: string = '';
   imageUrl: string = '';
   wantsText: string = '';
+  linkType: string = '';
+  linkValue: string = '';
   sort: number = 0;
 }
 
@@ -114,13 +155,29 @@ export class HomeFeaturedSectionData {
   sort: number = 0;
 }
 
+export class HomePromoSectionData {
+  key: string = '';
+  title: string = '';
+  subtitle: string = '';
+  imageUrl: string = '';
+  leftImageUrl: string = '';
+  rightImageUrl: string = '';
+  badgeText: string = '';
+  priceLabel: string = '';
+  priceText: string = '';
+  ctaText: string = '';
+  linkType: string = '';
+  linkValue: string = '';
+  sort: number = 0;
+}
+
 export class HomeModulePayloadData {
   topics: HomeReviewTopicData[] = [];
   items: HomeNewTeaItemData[] = [];
   notice: string = '';
   tabs: HomeFeaturedTabData[] = [];
   activeTab: string = '';
-  sections: HomeFeaturedSectionData[] = [];
+  sections: Array<HomeFeaturedSectionData | HomePromoSectionData> = [];
   updatedAt: number = 0;
 }
 
@@ -160,7 +217,7 @@ export class CategoryData {
 
 export class NavigationResolveData {
   route: string = '';
-  params: Record<string, string> = {};
+  params: RouteParams = new RouteParams();
 }
 
 export class ProductListData {
@@ -244,6 +301,12 @@ export class HomeRepository {
     path += queryParams.join('&');
     const req = createGetRequest(path);
     const result = await HttpClient.request<ProductListData>(req);
+    return result.data;
+  }
+
+  static async getProductDetail(productId: string): Promise<ProductDetailData> {
+    const req = createGetRequest(`/catalog/products/${productId}`);
+    const result = await HttpClient.request<ProductDetailData>(req);
     return result.data;
   }
 }

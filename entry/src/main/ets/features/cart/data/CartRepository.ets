@@ -1,5 +1,6 @@
 import { FeaturedListCard } from '../../home/data/HomeRepository';
 
+@Observed
 export class CartItem {
   id: string;
   product: FeaturedListCard;

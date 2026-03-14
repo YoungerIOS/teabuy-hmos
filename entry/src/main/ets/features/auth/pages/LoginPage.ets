@@ -4,6 +4,7 @@ import { UserStore } from '../../../core/store/UserStore';
 import { ApiConfig } from '../../../core/network/ApiConfig';
 import { AppRoute } from '../../../router/RouteMap';
 import { NavService } from '../../../router/NavService';
+import { CartStorage } from '../../cart/data/CartStorage';
 
 @Component
 export struct LoginPage {
@@ -29,12 +30,13 @@ export struct LoginPage {
     try {
       if (this.isRegisterMode) {
         // 注册
-        const data = await AuthRepository.register(this.username.trim(), this.password);
+        const data = await AuthRepository.register(this.username.trim(), this.password, '');
         UserStore.setSession(data.accessToken, data.user.id);
         this.isLoggedIn = true;
         this.activeNav = 0;
         this.currentRoute = AppRoute.HOME;
         NavService.go(AppRoute.HOME);
+        void CartStorage.syncRemote(getContext(this));
       } else {
         // 登录
         const data = await AuthRepository.login(this.username.trim(), this.password);
@@ -43,8 +45,10 @@ export struct LoginPage {
         this.activeNav = 0;
         this.currentRoute = AppRoute.HOME;
         NavService.go(AppRoute.HOME);
+        void CartStorage.syncRemote(getContext(this));
       }
     } catch (err) {
+      const error = err as Error;
       const value = err as Record<string, Object>;
       const msgObj = value['message'];
       this.errorText = msgObj !== undefined && msgObj !== null ? `${msgObj}` : (this.isRegisterMode ? '注册失败，请稍后重试' : '登录失败，请稍后重试');

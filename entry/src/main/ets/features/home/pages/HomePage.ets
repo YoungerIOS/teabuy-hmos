@@ -1,5 +1,6 @@
 import { Colors } from '../../../core/ui/theme/Tokens';
 import { AppRoute } from '../../../router/RouteMap';
+import { RouteParams } from '../../../router/RouteParams';
 import { NavService } from '../../../router/NavService';
 import { window, promptAction } from '@kit.ArkUI';
 import { ApiConfig } from '../../../core/network/ApiConfig';
@@ -12,8 +13,10 @@ import {
   HomeFeaturedTabData,
   HomeModuleData,
   HomeNewTeaItemData,
+  HomePromoSectionData,
   HomeRepository,
   HomeReviewTopicData,
+  NavigationResolveData,
   FeaturedListCard,
   CategoryItem,
   CategoryData
@@ -29,7 +32,12 @@ import { FilterPage } from '../../filter/pages/FilterPage';
 import { ProductListPage } from '../../filter/pages/ProductListPage';
 import { CartPage } from '../../cart/pages/CartPage';
 import { CartItem } from '../../cart/data/CartRepository';
+import { CartRemoteRepository } from '../../cart/data/CartRemoteRepository';
+import { CartStorage } from '../../cart/data/CartStorage';
 import { CheckoutPage } from '../../order/pages/CheckoutPage';
+import { PaymentConfirmPage } from '../../order/pages/PaymentConfirmPage';
+import { PaymentSuccessPage } from '../../order/pages/PaymentSuccessPage';
+import { OrderListPage } from '../../order/pages/OrderListPage';
 import { ProfilePage } from '../../profile/pages/ProfilePage';
 import { SettingsPage } from '../../profile/pages/SettingsPage';
 import { LoginPage } from '../../auth/pages/LoginPage';
@@ -45,6 +53,8 @@ class NewTeaItem {
   subtitle: string = '';
   imageUrl: string = '';
   wantsText: string = '';
+  linkType: string = '';
+  linkValue: string = '';
 }
 
 export interface FeaturedTab {
@@ -82,6 +92,8 @@ export interface FeaturedSection {
 struct HomeTopSection {
   @Prop bannerModuleTitle: string = '推荐';
   @Prop bannerImages: string[] = [];
+  @Prop bannerItems: HomeBannerData[] = [];
+  @Prop bannerNavData: NavigationResolveData[] = [];
   @Prop showBanner: boolean = true;
   @Prop homeContentWidth: number = 375;
   @Prop featuredTabs: FeaturedTab[] = [];
@@ -252,7 +264,10 @@ struct HomeTopSection {
 
       if (this.showBanner) {
         BannerCarousel({
+          currentRoute: $currentRoute,
           bannerImages: this.bannerImages,
+          bannerItems: this.bannerItems,
+          bannerNavData: this.bannerNavData,
           bannerWidth: 288,
           bannerHeight: 141,
           autoPlayInterval: 3200,
@@ -277,6 +292,7 @@ struct HomeTopSection {
         .justifyContent(FlexAlign.SpaceBetween);
 
         BannerCarousel({
+          currentRoute: $currentRoute,
           bannerImages: this.featuredBannerImages,
           bannerWidth: this.featuredMainWidth(),
           bannerHeight: this.featuredBannerHeight(),
@@ -324,19 +340,33 @@ export struct HomeFeaturePage {
 
   private handleAddToCart(card: FeaturedListCard) {
     const existing: CartItem[] = AppStorage.get<CartItem[]>('cartItems') || [];
-    const index = existing.findIndex((item: CartItem) => item.product.name ? item.product.name === card.name : false);
+    const index = existing.findIndex((item: CartItem) => {
+      if (card.skuId && card.skuId.length > 0 && item.product.skuId && item.product.skuId.length > 0) {
+        return item.product.skuId === card.skuId;
+      }
+      if (card.id && card.id.length > 0 && item.product.id && item.product.id.length > 0) {
+        return item.product.id === card.id;
+      }
+      return item.product.name ? item.product.name === card.name : false;
+    });
     if (index >= 0) {
       existing[index].quantity += 1;
     } else {
+      const newItemId = card.id && card.id.length > 0 ? card.id : (card.skuId || card.name || Date.now().toString());
       const newItem = new CartItem(
-        card.name || Date.now().toString(),
+        newItemId,
         card,
         1,
         true
       );
       existing.push(newItem);
     }
-    AppStorage.setOrCreate('cartItems', [...existing]);
+    CartStorage.update([...existing]);
+    if (card.skuId && card.skuId.length > 0) {
+      void CartRemoteRepository.addItem(card.skuId, 1).catch((error: Error) => {
+        console.error('Failed to add cart item remotely:', error);
+      });
+    }
     try {
       promptAction.showToast({ message: '已加入购物车' });
     } catch (err) {
@@ -604,6 +634,8 @@ export struct HomeFeaturePage {
     'https://nfzznasyztaontqmuhjq.supabase.co/storage/v1/render/image/public/product-images/home/home_banner_2.png?width=900&quality=72',
     'https://nfzznasyztaontqmuhjq.supabase.co/storage/v1/render/image/public/product-images/home/home_banner_1.png?width=900&quality=72'
   ];
+  @State private bannerItems: HomeBannerData[] = [];
+  @State private bannerNavData: NavigationResolveData[] = [];
   private navTabsController: TabsController = new TabsController();
   // Design bottom-bar white area has 22px inset on both sides at 854px export width.
   private readonly navInsetRatio: number = 22 / 854;
@@ -619,6 +651,7 @@ export struct HomeFeaturePage {
 
   @State private categoryTabs: string[] = ['袋茶', '包茶', '茶具', '茶制品'];
   @State private categoryItems: CategoryItem[] = [];
+  @State private categoryNavData: NavigationResolveData[] = [];
   private readonly reviewHeaderTopOffset: number = 8;
   private readonly reviewCardSize: number = 68;
   private readonly reviewCardGap: number = 12;
@@ -638,27 +671,36 @@ export struct HomeFeaturePage {
       title: '五种健康茶',
       subtitle: '炉火很旺，钟声很响，手中清茶正温',
       imageUrl: 'https://nfzznasyztaontqmuhjq.supabase.co/storage/v1/render/image/public/product-images/home/home_new_tea_1.png?width=560&quality=72',
-      wantsText: '114人想试'
+      wantsText: '114人想试',
+      linkType: '',
+      linkValue: ''
     },
     {
       title: '银针绿茶',
       subtitle: '炉火很旺，钟声很响，手中清茶正温',
       imageUrl: 'https://nfzznasyztaontqmuhjq.supabase.co/storage/v1/render/image/public/product-images/home/home_new_tea_2.png?width=560&quality=72',
-      wantsText: '514人想试'
+      wantsText: '514人想试',
+      linkType: '',
+      linkValue: ''
     },
     {
       title: '碧螺春',
       subtitle: '晨雾初起，芽叶鲜活，香气更清雅',
       imageUrl: 'https://nfzznasyztaontqmuhjq.supabase.co/storage/v1/render/image/public/product-images/home/home_new_tea_1.png?width=560&quality=72',
-      wantsText: '208人想试'
+      wantsText: '208人想试',
+      linkType: '',
+      linkValue: ''
     },
     {
       title: '花香乌龙',
       subtitle: '花香甘润，回味绵长，适合慢品',
       imageUrl: 'https://nfzznasyztaontqmuhjq.supabase.co/storage/v1/render/image/public/product-images/home/home_new_tea_2.png?width=560&quality=72',
-      wantsText: '163人想试'
+      wantsText: '163人想试',
+      linkType: '',
+      linkValue: ''
     }
   ];
+  @State private newTeaNavData: NavigationResolveData[] = [];
   private readonly newTeaHeaderTopOffset: number = 8;
   private readonly sectionSidePadding: number = 16;
   private readonly newTeaVisibleTailRatio: number = 0.25;
@@ -668,6 +710,12 @@ export struct HomeFeaturePage {
   private readonly newTeaTextPadding: number = 10;
   private readonly newTeaCardAspectRatio: number = 142 / 166;
   private readonly newTeaImageRatio: number = 92 / 142;
+  @State private promoFlashLinkType: string = '';
+  @State private promoFlashLinkValue: string = '';
+  @State private promoTastingLinkType: string = '';
+  @State private promoTastingLinkValue: string = '';
+  @State private promoSetLinkType: string = '';
+  @State private promoSetLinkValue: string = '';
   private readonly promoGapHorizontal: number = 11;
   private readonly promoGapVertical: number = 14;
   private readonly promoLargeAspectRatio: number = 262 / 166;
@@ -790,6 +838,24 @@ export struct HomeFeaturePage {
         })
           .width('100%')
           .height('100%');
+      } else if (this.currentRoute === AppRoute.PAYMENT_CONFIRM) {
+        PaymentConfirmPage({
+          currentRoute: $currentRoute
+        })
+          .width('100%')
+          .height('100%');
+      } else if (this.currentRoute === AppRoute.PAYMENT_SUCCESS) {
+        PaymentSuccessPage({
+          currentRoute: $currentRoute
+        })
+          .width('100%')
+          .height('100%');
+      } else if (this.currentRoute === AppRoute.ORDER_LIST) {
+        OrderListPage({
+          currentRoute: $currentRoute
+        })
+          .width('100%')
+          .height('100%');
       } else {
         Column() {
           if (this.currentRoute === AppRoute.FILTER) {
@@ -826,6 +892,7 @@ export struct HomeFeaturePage {
             HomeTopSection({
               bannerModuleTitle: this.bannerModuleTitle,
               bannerImages: this.bannerImages,
+              bannerItems: this.bannerItems,
               showBanner: this.activeTopTab === 0,
               homeContentWidth: this.homeContentWidth,
               featuredTabs: this.featuredTopTabsDisplay(),
@@ -914,16 +981,20 @@ export struct HomeFeaturePage {
 
   private applyHomeModules(data: HomeData): void {
     const remoteBanners: string[] = [];
+    const remoteBannerItems: HomeBannerData[] = [];
     if (data.banners !== undefined && data.banners !== null) {
       for (let i = 0; i < data.banners.length; i++) {
         const banner: HomeBannerData = data.banners[i];
         if (banner.imageUrl.length > 0) {
           remoteBanners.push(this.optimizeImageUrl(banner.imageUrl, 900));
+          remoteBannerItems.push(banner);
         }
       }
     }
     if (remoteBanners.length > 0) {
       this.bannerImages = remoteBanners;
+      this.bannerItems = remoteBannerItems;
+      void this.preloadBannerNav(remoteBannerItems);
     }
 
     for (let i = 0; i < data.modules.length; i++) {
@@ -945,9 +1016,54 @@ export struct HomeFeaturePage {
       }
       if (module.key === 'featured') {
         this.applyFeaturedTabs(module.payload?.tabs);
-        this.applyFeaturedSections(module.payload?.sections, module.payload?.updatedAt);
+        this.applyFeaturedSections(module.payload?.sections as HomeFeaturedSectionData[], module.payload?.updatedAt);
+      }
+      if (module.key === 'promo') {
+        this.applyPromoSections(module.payload?.sections);
       }
     }
+  }
+
+  private applyPromoSections(sections?: Array<HomeFeaturedSectionData | HomePromoSectionData>): void {
+    if (sections === undefined || sections === null || sections.length === 0) {
+      return;
+    }
+    for (let i = 0; i < sections.length; i++) {
+      const section = sections[i] as HomePromoSectionData;
+      if (!section || section.key.length === 0) {
+        continue;
+      }
+      if (section.key === 'flash_sale') {
+        this.promoFlashLinkType = section.linkType;
+        this.promoFlashLinkValue = section.linkValue;
+      } else if (section.key === 'tasting_zone') {
+        this.promoTastingLinkType = section.linkType;
+        this.promoTastingLinkValue = section.linkValue;
+      } else if (section.key === 'tea_set') {
+        this.promoSetLinkType = section.linkType;
+        this.promoSetLinkValue = section.linkValue;
+      }
+    }
+  }
+
+  private async preloadBannerNav(items: HomeBannerData[]): Promise<void> {
+    if (items.length === 0) {
+      this.bannerNavData = [];
+      return;
+    }
+    const tasks = items.map(async (item) => {
+      if (!item.linkType) {
+        return new NavigationResolveData();
+      }
+      try {
+        return await HomeRepository.resolveNavigation(item.linkType, item.linkValue);
+      } catch (error) {
+        console.error('Failed to resolve banner navigation:', error);
+        return new NavigationResolveData();
+      }
+    });
+    const resolved = await Promise.all(tasks);
+    this.bannerNavData = resolved;
   }
 
   private withCacheVersion(url: string, version: number): string {
@@ -1008,12 +1124,42 @@ export struct HomeFeaturePage {
         title: item.title,
         subtitle: item.subtitle.length > 0 ? item.subtitle : '炉火很旺，钟声很响，手中清茶正温',
         imageUrl: this.optimizeImageUrl(versionedImageUrl, 560),
-        wantsText: item.wantsText.length > 0 ? item.wantsText : '100人想试'
+        wantsText: item.wantsText.length > 0 ? item.wantsText : '100人想试',
+        linkType: item.linkType,
+        linkValue: item.linkValue
       });
     }
     if (nextItems.length > 0) {
       this.newTeaItems = nextItems;
+      void this.preloadNewTeaNav(sortedItems);
     }
+  }
+
+  private newTeaNavAt(index: number): NavigationResolveData | null {
+    if (this.newTeaNavData.length === 0) {
+      return null;
+    }
+    return this.newTeaNavData[index] || null;
+  }
+
+  private async preloadNewTeaNav(items: HomeNewTeaItemData[]): Promise<void> {
+    if (items.length === 0) {
+      this.newTeaNavData = [];
+      return;
+    }
+    const tasks = items.map(async (item) => {
+      if (!item.linkType) {
+        return new NavigationResolveData();
+      }
+      try {
+        return await HomeRepository.resolveNavigation(item.linkType, item.linkValue);
+      } catch (error) {
+        console.error('Failed to resolve new tea navigation:', error);
+        return new NavigationResolveData();
+      }
+    });
+    const resolved = await Promise.all(tasks);
+    this.newTeaNavData = resolved;
   }
 
   private applyFeaturedTabs(tabs?: HomeFeaturedTabData[]): void {
@@ -1257,6 +1403,7 @@ export struct HomeFeaturePage {
       if (categoryData && categoryData.items && categoryData.items.length > 0) {
         this.categoryItems = categoryData.items;
         this.categoryTabs = categoryData.items.map(item => item.name);
+        void this.preloadCategoryNav(categoryData.items);
       }
     } catch (error) {
       console.error('Failed to load categories:', error);
@@ -1335,9 +1482,89 @@ export struct HomeFeaturePage {
         return AppRoute.REVIEW_LIST;
       case 'webview':
         return AppRoute.WEBVIEW;
+      case 'order_list':
+        return AppRoute.ORDER_LIST;
       default:
         return AppRoute.HOME;
     }
+  }
+
+  private handleResolvedNav(navData: NavigationResolveData): void {
+    const targetRoute = this.routeFromString(navData.route);
+    if (targetRoute === AppRoute.WEBVIEW) {
+      const url = navData.params?.url || '';
+      if (url.startsWith('http://') || url.startsWith('https://')) {
+        this.currentRoute = targetRoute;
+        NavService.go(targetRoute, navData.params);
+      } else {
+        console.error('Invalid URL for webview:', url);
+        promptAction.showToast({
+          message: '链接配置错误,无法打开',
+          duration: 2000
+        });
+      }
+    } else {
+      this.currentRoute = targetRoute;
+      NavService.go(targetRoute, navData.params);
+    }
+  }
+
+  private categoryNavAt(index: number): NavigationResolveData | null {
+    if (this.categoryNavData.length === 0) {
+      return null;
+    }
+    return this.categoryNavData[index] || null;
+  }
+
+  private handleLinkNavigation(linkType: string, linkValue: string): void {
+    if (linkType && linkValue) {
+      HomeRepository.resolveNavigation(linkType, linkValue)
+        .then((navData: NavigationResolveData) => {
+          this.handleResolvedNav(navData);
+        })
+        .catch((error: Error) => {
+          console.error('Failed to resolve navigation:', error);
+          if (linkValue) {
+            const params = new RouteParams();
+            params.productId = linkValue;
+            this.currentRoute = AppRoute.PRODUCT_DETAIL;
+            NavService.go(AppRoute.PRODUCT_DETAIL, params);
+          } else {
+            this.currentRoute = AppRoute.PRODUCT_DETAIL;
+            NavService.go(AppRoute.PRODUCT_DETAIL);
+          }
+        });
+      return;
+    }
+    if (linkValue) {
+      const params = new RouteParams();
+      params.productId = linkValue;
+      this.currentRoute = AppRoute.PRODUCT_DETAIL;
+      NavService.go(AppRoute.PRODUCT_DETAIL, params);
+      return;
+    }
+    this.currentRoute = AppRoute.PRODUCT_DETAIL;
+    NavService.go(AppRoute.PRODUCT_DETAIL);
+  }
+
+  private async preloadCategoryNav(items: CategoryItem[]): Promise<void> {
+    if (items.length === 0) {
+      this.categoryNavData = [];
+      return;
+    }
+    const tasks = items.map(async (item) => {
+      if (!item.linkType) {
+        return new NavigationResolveData();
+      }
+      try {
+        return await HomeRepository.resolveNavigation(item.linkType, item.linkValue);
+      } catch (error) {
+        console.error('Failed to resolve category navigation:', error);
+        return new NavigationResolveData();
+      }
+    });
+    const resolved = await Promise.all(tasks);
+    this.categoryNavData = resolved;
   }
 
   private categoryIconWidth(index: number): number {
@@ -1393,40 +1620,19 @@ export struct HomeFeaturePage {
     .width(this.categoryItemWidth(index))
     .onClick(async () => {
       this.activeCategory = index;
-      
-      // 先解析导航,获取正确的路由和参数
+      const cachedNav = this.categoryNavAt(index);
+      if (cachedNav && cachedNav.route) {
+        this.handleResolvedNav(cachedNav);
+        return;
+      }
+
       if (this.categoryItems.length > 0 && this.categoryItems[index]) {
         const item = this.categoryItems[index];
         try {
           const navData = await HomeRepository.resolveNavigation(item.linkType, item.linkValue);
-          console.log('Navigation resolved:', navData.route, navData.params);
-          
-          // 根据解析结果跳转
-          const targetRoute = this.routeFromString(navData.route);
-          
-          // 如果是 webview,检查 URL 是否有效
-          if (targetRoute === AppRoute.WEBVIEW) {
-            const url = navData.params?.url || '';
-            if (url.startsWith('http://') || url.startsWith('https://')) {
-              // URL 有效,跳转到 WebView
-              this.currentRoute = targetRoute;
-              NavService.go(targetRoute, navData.params);
-            } else {
-              // URL 无效,提示用户
-              console.error('Invalid URL for webview:', url);
-              promptAction.showToast({
-                message: '链接配置错误,无法打开',
-                duration: 2000
-              });
-            }
-          } else {
-            // 其他路由正常跳转
-            this.currentRoute = targetRoute;
-            NavService.go(targetRoute, navData.params);
-          }
+          this.handleResolvedNav(navData);
         } catch (error) {
           console.error('Failed to resolve navigation:', error);
-          // 失败时默认跳转到商品列表
           this.currentRoute = AppRoute.PRODUCT_LIST;
           NavService.go(AppRoute.PRODUCT_LIST);
         }
@@ -1650,6 +1856,33 @@ export struct HomeFeaturePage {
     .borderRadius(this.newTeaCardRadius)
     .onClick(() => {
       void index;
+      const cachedNav = this.newTeaNavAt(index);
+      if (cachedNav && cachedNav.route) {
+        this.handleResolvedNav(cachedNav);
+        return;
+      }
+      if (item.linkType && item.linkValue) {
+        HomeRepository.resolveNavigation(item.linkType, item.linkValue)
+          .then((navData: NavigationResolveData) => {
+            this.handleResolvedNav(navData);
+          })
+          .catch((error: Error) => {
+            console.error('Failed to resolve new tea navigation:', error);
+            const params = new RouteParams();
+            params.productId = item.linkValue;
+            this.currentRoute = AppRoute.PRODUCT_DETAIL;
+            NavService.go(AppRoute.PRODUCT_DETAIL, params);
+          });
+        return;
+      }
+      if (item.linkValue) {
+        const params = new RouteParams();
+        params.productId = item.linkValue;
+        this.currentRoute = AppRoute.PRODUCT_DETAIL;
+        NavService.go(AppRoute.PRODUCT_DETAIL, params);
+        return;
+      }
+      this.currentRoute = AppRoute.PRODUCT_DETAIL;
       NavService.go(AppRoute.PRODUCT_DETAIL);
     });
   }
@@ -1665,14 +1898,18 @@ export struct HomeFeaturePage {
             '花小钱买单泡，对胃口再下手',
             $r('app.media.home_promo_tasting_thumb_1_3x'),
             $r('app.media.home_promo_tasting_thumb_2_3x'),
-            $r('app.media.home_promo_card_pattern_top_3x')
+            $r('app.media.home_promo_card_pattern_top_3x'),
+            this.promoTastingLinkType,
+            this.promoTastingLinkValue
           );
           this.PromoSmallCard(
             '习茶套装',
             '花小钱买单泡，对胃口再下手',
             $r('app.media.home_promo_set_thumb_1_3x'),
             $r('app.media.home_promo_set_thumb_2_3x'),
-            $r('app.media.home_promo_card_pattern_bottom_3x')
+            $r('app.media.home_promo_card_pattern_bottom_3x'),
+            this.promoSetLinkType,
+            this.promoSetLinkValue
           );
         }
         .layoutWeight(1);
@@ -1692,7 +1929,7 @@ export struct HomeFeaturePage {
         .height(this.promoLargeCardHeight())
         .borderRadius(this.promoCardRadius)
         .backgroundColor('#71AD91')
-        .onClick(() => NavService.go(AppRoute.PRODUCT_DETAIL));
+        .onClick(() => this.handleLinkNavigation(this.promoFlashLinkType, this.promoFlashLinkValue));
 
       Column() {
         Image($r('app.media.home_promo_flash_main_3x'))
@@ -1767,11 +2004,19 @@ export struct HomeFeaturePage {
     .width('100%')
     .height(this.promoLargeCardHeight())
     .layoutWeight(1)
-    .onClick(() => NavService.go(AppRoute.PRODUCT_DETAIL));
+    .onClick(() => this.handleLinkNavigation(this.promoFlashLinkType, this.promoFlashLinkValue));
   }
 
   @Builder
-  private PromoSmallCard(title: string, subtitle: string, leftThumb: Resource, rightThumb: Resource, patternImage: Resource) {
+  private PromoSmallCard(
+    title: string,
+    subtitle: string,
+    leftThumb: Resource,
+    rightThumb: Resource,
+    patternImage: Resource,
+    linkType: string,
+    linkValue: string
+  ) {
     Stack({ alignContent: Alignment.TopStart }) {
       Row()
         .width('100%')
@@ -1818,7 +2063,7 @@ export struct HomeFeaturePage {
     .width('100%')
     .height(this.promoSmallCardHeight())
     .clip(true)
-    .onClick(() => NavService.go(AppRoute.PRODUCT_DETAIL));
+    .onClick(() => this.handleLinkNavigation(linkType, linkValue));
   }
 
   private featuredScale(value: number): number {

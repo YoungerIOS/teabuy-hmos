@@ -9,7 +9,7 @@ export struct FilterPage {
   @Link currentRoute: AppRoute;
   @State selectedCategoryIndex: number = 5; // "茶区" by default matching design
 
-  @State topSafeAreaPx: number = 0;
+  @State topSafeAreaPx: number = 44;
 
   private readonly categories: string[] = [
     '热门推荐', '年份', '品牌', '包茶', '茶具', '茶区', '袋茶', '茶制品'
@@ -24,9 +24,12 @@ export struct FilterPage {
   aboutToAppear() {
     window.getLastWindow(getContext(this)).then((win: window.Window) => {
       const avoidArea = win.getWindowAvoidArea(window.AvoidAreaType.TYPE_SYSTEM);
-      this.topSafeAreaPx = px2vp(avoidArea.topRect.height);
+      const nextTop = px2vp(avoidArea.topRect.height);
+      if (nextTop > 0 && Math.abs(nextTop - this.topSafeAreaPx) > 1) {
+        this.topSafeAreaPx = nextTop;
+      }
     }).catch(() => {
-      this.topSafeAreaPx = 44; // fallback for previewer
+      this.topSafeAreaPx = this.topSafeAreaPx > 0 ? this.topSafeAreaPx : 44;
     });
   }
 
@@ -112,6 +115,7 @@ export struct FilterPage {
               
               // 轮播图 Section
               BannerCarousel({
+                currentRoute: $currentRoute,
                 bannerImages: this.bannerImages,
                 bannerWidth: 260, // Adjusted width for side-panel layout
                 bannerHeight: 120, // Adjusted height constraint

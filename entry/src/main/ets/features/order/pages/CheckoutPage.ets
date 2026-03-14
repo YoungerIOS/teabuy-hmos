@@ -1,5 +1,47 @@
 import { AppRoute } from '../../../router/RouteMap';
+import { NavService } from '../../../router/NavService';
+import { RouteParams } from '../../../router/RouteParams';
+import { promptAction } from '@kit.ArkUI';
 import { CartItem } from '../../cart/data/CartRepository';
+import { CartRemoteRepository } from '../../cart/data/CartRemoteRepository';
+import { CartStorage } from '../../cart/data/CartStorage';
+import { HomeRepository } from '../../home/data/HomeRepository';
+import { AddressRepository, Address } from '../data/AddressRepository';
+import { OrderPreviewData, OrderPreviewItem, OrderRepository } from '../data/OrderRepository';
+
+class AddressViewModel implements Address {
+  id: string = '';
+  recipient: string = '';
+  phone: string = '';
+  region: string = '';
+  detail: string = '';
+  isDefault: boolean = false;
+}
+
+class PriceParts {
+  symbol: string = '';
+  amount: string = '';
+  unit: string = '';
+}
+
+class CheckoutDisplayItem {
+  name: string = '';
+  skuName: string = '';
+  imageUrl: string = '';
+  priceText: string = '';
+  quantity: number = 1;
+}
+
+class CartItemSkuPair {
+  item: CartItem;
+  skuId: string = '';
+
+  constructor(item: CartItem, skuId: string) {
+    this.item = item;
+    this.skuId = skuId;
+  }
+}
+
 
 @Component
 export struct CheckoutPage {
@@ -8,16 +50,445 @@ export struct CheckoutPage {
   @State private homeContentWidth: number = 375;
   @State private orderNote: string = '';
   @State private hasAddress: boolean = false;
+  @State private loadingAddress: boolean = false;
+  @State private addressLoaded: boolean = false;
+  @State private previewLoading: boolean = false;
+  @State private usePreview: boolean = false;
+  @State private previewData: OrderPreviewData = new OrderPreviewData();
+  @State private submitting: boolean = false;
+  @State private addresses: Address[] = [];
+  @State private selectedAddress: AddressViewModel = new AddressViewModel();
+  @State private focusSkuId: string = '';
+  @State private focusQuantity: number = 1;
+  @State private quantityDisplay: number = 1;
+  @State private quantityDirty: boolean = false;
 
   private s(value: number): number {
     return value * this.homeContentWidth / 375;
   }
 
+  aboutToAppear(): void {
+    const params = NavService.getParams();
+    if (params && params.skuId) {
+      this.focusSkuId = params.skuId;
+    }
+    const selectedLocal = this.getSelectedItems();
+    if (selectedLocal.length > 0) {
+      this.focusQuantity = selectedLocal[0].quantity;
+    } else if (this.cartItems.length > 0) {
+      this.focusQuantity = this.cartItems[0].quantity;
+    }
+    this.quantityDisplay = this.focusQuantity;
+    this.quantityDirty = false;
+    void this.loadAddresses();
+    void this.loadOrderPreview();
+  }
+
+  private async loadAddresses(): Promise<void> {
+    if (this.loadingAddress) {
+      return;
+    }
+    this.loadingAddress = true;
+    this.addressLoaded = false;
+    try {
+      const list = await AddressRepository.getAddresses();
+      this.addresses = list;
+      if (list.length > 0) {
+        this.hasAddress = true;
+        const preferred = list.find(item => item.isDefault) || list[0];
+        this.applySelectedAddress(preferred);
+      } else {
+        this.hasAddress = false;
+        this.selectedAddress = new AddressViewModel();
+      }
+    } catch (error) {
+      console.error('Failed to load addresses:', error);
+      this.hasAddress = false;
+      this.selectedAddress = new AddressViewModel();
+    } finally {
+      this.loadingAddress = false;
+      this.addressLoaded = true;
+    }
+  }
+
+  private applySelectedAddress(address: Address): void {
+    const next = new AddressViewModel();
+    next.id = address.id;
+    next.recipient = address.recipient;
+    next.phone = address.phone;
+    next.region = address.region;
+    next.detail = address.detail;
+    next.isDefault = address.isDefault;
+    this.selectedAddress = next;
+  }
+
+  private async loadOrderPreview(): Promise<void> {
+    if (this.previewLoading) {
+      return;
+    }
+    this.previewLoading = true;
+    try {
+      const cart = await CartRemoteRepository.getCart();
+      let targetIds: string[] = [];
+      if (this.focusSkuId.length > 0) {
+        const match = cart.items.find(item => item.skuId === this.focusSkuId);
+        if (match) {
+          targetIds = [match.id];
+          const needsQuantityUpdate = this.focusQuantity > 0 && match.quantity !== this.focusQuantity;
+          const needsSelectUpdate = !match.selected;
+          if (needsQuantityUpdate || needsSelectUpdate) {
+            const nextQty = needsQuantityUpdate ? this.focusQuantity : match.quantity;
+            await CartRemoteRepository.updateItem(match.id, nextQty, needsSelectUpdate ? true : undefined);
+          }
+        } else {
+          this.previewData = new OrderPreviewData();
+          this.usePreview = false;
+          return;
+        }
+      } else {
+        const selectedIds = cart.items.filter(item => item.selected).map(item => item.id);
+        targetIds = selectedIds.length > 0 ? selectedIds : cart.items.map(item => item.id);
+      }
+      if (targetIds.length > 0) {
+        const preview = await OrderRepository.preview(targetIds);
+        this.previewData = preview;
+        this.usePreview = preview.items.length > 0;
+        if (this.usePreview) {
+          if (this.quantityDirty) {
+            this.updatePreviewQuantity(this.quantityDisplay);
+          } else if (preview.items.length > 0) {
+            this.quantityDisplay = preview.items[0].quantity;
+          }
+        }
+      } else {
+        this.previewData = new OrderPreviewData();
+        this.usePreview = false;
+      }
+    } catch (error) {
+      console.error('Failed to load order preview:', error);
+      this.previewData = new OrderPreviewData();
+      this.usePreview = false;
+    } finally {
+      this.previewLoading = false;
+    }
+  }
+
+  private getDisplayItem(): CheckoutDisplayItem {
+    const item = new CheckoutDisplayItem();
+    if (this.usePreview && this.previewData.items.length > 0) {
+      const previewItem = this.previewData.items[0];
+      item.name = previewItem.productName;
+      item.skuName = previewItem.skuName.length > 0 ? `规格：${previewItem.skuName}` : '';
+      item.imageUrl = previewItem.imageUrl;
+      item.quantity = previewItem.quantity;
+      item.priceText = previewItem.priceCent > 0 ? `￥${(previewItem.priceCent / 100).toFixed(2)}` : previewItem.subtotalText;
+      return item;
+    }
+    const selected = this.getSelectedItems();
+    const localItem = selected.length > 0 ? selected[0] : (this.cartItems.length > 0 ? this.cartItems[0] : undefined);
+    if (localItem) {
+      item.name = localItem.product.name || '';
+      item.skuName = localItem.product.subtitle ? `规格：${localItem.product.subtitle}` : '';
+      item.imageUrl = localItem.product.imageUrl || '';
+      item.quantity = localItem.quantity;
+      item.priceText = localItem.product.priceText || '';
+    }
+    return item;
+  }
+
+  private updatePreviewQuantity(nextQty: number): void {
+    const qty = nextQty < 1 ? 1 : nextQty;
+    const next = new OrderPreviewData();
+    next.discountCent = this.previewData.discountCent;
+    next.shippingCent = this.previewData.shippingCent;
+    next.addressRequired = this.previewData.addressRequired;
+    let subtotal = 0;
+    const items: OrderPreviewItem[] = [];
+    for (let i = 0; i < this.previewData.items.length; i++) {
+      const item = this.previewData.items[i];
+      const updated = new OrderPreviewItem();
+      updated.cartItemId = item.cartItemId;
+      updated.skuId = item.skuId;
+      updated.productName = item.productName;
+      updated.skuName = item.skuName;
+      updated.imageUrl = item.imageUrl;
+      updated.quantity = i === 0 ? qty : item.quantity;
+      updated.priceCent = item.priceCent;
+      updated.subtotalCent = updated.priceCent * updated.quantity;
+      updated.subtotalText = `￥${(updated.subtotalCent / 100).toFixed(2)}`;
+      subtotal += updated.subtotalCent;
+      items.push(updated);
+    }
+    next.items = items;
+    next.subtotalCent = subtotal;
+    next.payableCent = subtotal + next.shippingCent - next.discountCent;
+    if (next.payableCent < 0) {
+      next.payableCent = 0;
+    }
+    this.previewData = next;
+    this.usePreview = true;
+  }
+
+  private updateLocalCartQuantity(nextQty: number): void {
+    const qty = nextQty < 1 ? 1 : nextQty;
+    const items = this.cartItems.slice();
+    if (items.length === 0) {
+      return;
+    }
+    let targetIndex = items.findIndex(item => item.selected);
+    if (targetIndex < 0) {
+      targetIndex = 0;
+    }
+    const updated: CartItem[] = [];
+    for (let i = 0; i < items.length; i++) {
+      const item = items[i];
+      if (i === targetIndex) {
+        updated.push(new CartItem(item.id, item.product, qty, item.selected));
+      } else {
+        updated.push(item);
+      }
+    }
+    CartStorage.update(updated);
+  }
+
+  private updateLocalCartQuantityBySku(nextQty: number): void {
+    const qty = nextQty < 1 ? 1 : nextQty;
+    const skuId = this.focusSkuId.length > 0 ? this.focusSkuId : (this.previewData.items.length > 0 ? this.previewData.items[0].skuId : '');
+    if (skuId.length === 0) {
+      this.updateLocalCartQuantity(qty);
+      return;
+    }
+    const items = this.cartItems.slice();
+    const targetIndex = items.findIndex(item => item.product.skuId === skuId);
+    if (targetIndex < 0) {
+      this.updateLocalCartQuantity(qty);
+      return;
+    }
+    const updated: CartItem[] = [];
+    for (let i = 0; i < items.length; i++) {
+      const item = items[i];
+      if (i === targetIndex) {
+        updated.push(new CartItem(item.id, item.product, qty, item.selected));
+      } else {
+        updated.push(item);
+      }
+    }
+    CartStorage.update(updated);
+  }
+
+  private async syncRemoteQuantity(nextQty: number): Promise<void> {
+    const qty = nextQty < 1 ? 1 : nextQty;
+    let skuId: string = '';
+    if (this.focusSkuId.length > 0) {
+      skuId = this.focusSkuId;
+    } else if (this.usePreview && this.previewData.items.length > 0) {
+      skuId = this.previewData.items[0].skuId;
+    } else {
+      const selected = this.getSelectedItems();
+      if (selected.length > 0) {
+        skuId = selected[0].product.skuId || '';
+      } else if (this.cartItems.length > 0) {
+        skuId = this.cartItems[0].product.skuId || '';
+      }
+    }
+    if (skuId.length === 0) {
+      return;
+    }
+    const itemId = await CartStorage.ensureRemoteId(skuId);
+    if (itemId.length === 0) {
+      return;
+    }
+    await CartRemoteRepository.updateItem(itemId, qty, true);
+  }
+
+  private setDisplayQuantity(nextQty: number): void {
+    const qty = nextQty < 1 ? 1 : nextQty;
+    this.quantityDisplay = qty;
+    this.quantityDirty = true;
+    if (this.usePreview && this.previewData.items.length > 0) {
+      this.updatePreviewQuantity(qty);
+    }
+    this.updateLocalCartQuantityBySku(qty);
+    void this.syncRemoteQuantity(qty).catch((error: Error) => {
+      console.error('Failed to sync remote quantity:', error);
+    });
+  }
+
+  private parsePriceText(priceText: string): PriceParts {
+    const parts = new PriceParts();
+    const match = priceText.match(/^([^0-9]*)([0-9.]+)(.*)$/);
+    if (match) {
+      parts.symbol = match[1] || '';
+      parts.amount = match[2] || '';
+      parts.unit = match[3] || '';
+      return parts;
+    }
+    parts.amount = priceText;
+    return parts;
+  }
+
+  private displayItemName(): string {
+    return this.getDisplayItem().name;
+  }
+
+  private displayItemSkuName(): string {
+    return this.getDisplayItem().skuName;
+  }
+
+  private displayItemImageUrl(): string {
+    return this.getDisplayItem().imageUrl;
+  }
+
+  private displayItemQuantity(): number {
+    if (this.quantityDisplay > 0) {
+      return this.quantityDisplay;
+    }
+    if (this.usePreview && this.previewData.items.length > 0) {
+      return this.previewData.items[0].quantity;
+    }
+    return this.getDisplayItem().quantity;
+  }
+
+  private displayItemPriceSymbol(): string {
+    return this.parsePriceText(this.getDisplayItem().priceText).symbol;
+  }
+
+  private displayItemPriceAmount(): string {
+    return this.parsePriceText(this.getDisplayItem().priceText).amount;
+  }
+
+  private async resolveSkuId(card: CartItem): Promise<string> {
+    if (card.product.skuId && card.product.skuId.length > 0) {
+      return card.product.skuId;
+    }
+    if (card.product.id && card.product.id.length > 0) {
+      try {
+        const detail = await HomeRepository.getProductDetail(card.product.id);
+        if (detail.skus.length > 0) {
+          return detail.skus[0].id;
+        }
+      } catch (error) {
+        console.error('Failed to resolve skuId:', error);
+      }
+    }
+    return '';
+  }
+
+  private getTargetCartItemIds(): string[] {
+    if (this.usePreview && this.previewData.items.length > 0) {
+      return this.previewData.items.map(item => item.cartItemId);
+    }
+    const selected = this.getSelectedItems();
+    if (selected.length > 0) {
+      return selected.map(item => item.id);
+    }
+    return this.cartItems.map(item => item.id);
+  }
+
+  private async submitOrder(): Promise<void> {
+    if (this.submitting) {
+      return;
+    }
+    if (!this.addressLoaded || !this.hasAddress || this.selectedAddress.id.length === 0) {
+      this.currentRoute = AppRoute.ADDRESS;
+      NavService.go(AppRoute.ADDRESS);
+      return;
+    }
+    this.submitting = true;
+    try {
+      if (this.previewLoading) {
+        await this.loadOrderPreview();
+      }
+      let cartItemIds: string[] = [];
+      let needSelectAll: boolean = false;
+      if (this.usePreview && this.previewData.items.length > 0) {
+        cartItemIds = this.previewData.items.map(item => item.cartItemId);
+      }
+      if (cartItemIds.length === 0) {
+        let cart = await CartRemoteRepository.getCart();
+        if (cart.items.length === 0) {
+          const selectedLocal = this.getSelectedItems();
+          const fallbackLocal = selectedLocal.length > 0 ? selectedLocal : this.cartItems;
+          if (fallbackLocal.length === 0) {
+            promptAction.showToast({ message: '购物车为空' });
+            return;
+          }
+          const resolved = await Promise.all(fallbackLocal.map(async (item) => {
+            const skuId = await this.resolveSkuId(item);
+            return new CartItemSkuPair(item, skuId);
+          }));
+          for (let i = 0; i < resolved.length; i++) {
+            if (resolved[i].skuId.length === 0) {
+              promptAction.showToast({ message: '缺少SKU，无法提交订单' });
+              return;
+            }
+          }
+          await Promise.all(resolved.map(res => CartRemoteRepository.addItem(res.skuId, res.item.quantity)));
+          cart = await CartRemoteRepository.getCart();
+        }
+        const selectedIds = cart.items.filter(item => item.selected).map(item => item.id);
+        cartItemIds = selectedIds.length > 0 ? selectedIds : cart.items.map(item => item.id);
+        needSelectAll = selectedIds.length === 0;
+      }
+      if (cartItemIds.length === 0) {
+        promptAction.showToast({ message: '未找到可提交的商品' });
+        return;
+      }
+      if (needSelectAll) {
+        await CartRemoteRepository.batchSelect(cartItemIds, true);
+      }
+      const result = await OrderRepository.createOrder(cartItemIds, this.selectedAddress.id);
+      promptAction.showToast({ message: '订单提交成功' });
+      
+      // 清空本地购物车中已下单的商品
+      const orderedIds = new Set(cartItemIds);
+      const remainingItems = this.cartItems.filter(item => !orderedIds.has(item.id));
+      CartStorage.update(remainingItems);
+      
+      // 同步远程购物车
+      try {
+        const remoteCart = await CartRemoteRepository.getCart();
+        const remoteItems = remoteCart.items.map(item => {
+          const localMatch = remainingItems.find(local => local.product.skuId === item.skuId);
+          return new CartItem(item.id, localMatch?.product || {
+            id: '',
+            skuId: item.skuId,
+            name: item.productName,
+            subtitle: item.subtitle,
+            imageUrl: item.imageUrl,
+            priceText: item.priceText || item.subtotalText,
+            badgePrimary: item.badges.length > 0 ? item.badges[0] : '',
+            badgeSecondary: item.badges.length > 1 ? item.badges[1] : ''
+          }, item.quantity, item.selected);
+        });
+        CartStorage.update(remoteItems);
+      } catch (syncError) {
+        console.error('Failed to sync cart after order:', syncError);
+      }
+      
+      if (result.orderNo.length > 0) {
+        const params = new RouteParams();
+        params.orderNo = result.orderNo;
+        params.totalCent = `${result.totalCent}`;
+        params.paymentRequired = result.paymentRequired ? '1' : '0';
+        NavService.go(AppRoute.PAYMENT_CONFIRM, params);
+        this.currentRoute = AppRoute.PAYMENT_CONFIRM;
+      }
+    } catch (error) {
+      console.error('Failed to submit order:', error);
+      promptAction.showToast({ message: '提交订单失败' });
+    } finally {
+      this.submitting = false;
+    }
+  }
   private getSelectedItems(): CartItem[] {
     return this.cartItems.filter(item => item.selected);
   }
 
   private getTotalPrice(): number {
+    if (this.usePreview) {
+      return this.previewData.subtotalCent / 100;
+    }
     return this.getSelectedItems().reduce((sum: number, item: CartItem) => {
       const priceStr = item.product.priceText || '0';
       const match = priceStr.match(/\d+(\.\d+)?/);
@@ -27,14 +498,30 @@ export struct CheckoutPage {
   }
 
   private getTotalCount(): number {
+    if (this.usePreview) {
+      return this.previewData.items.reduce((sum: number, item) => sum + item.quantity, 0);
+    }
     return this.getSelectedItems().reduce((sum: number, item: CartItem) => sum + item.quantity, 0);
   }
 
   private getDiscountAmount(): number {
-    return 114.3;
+    if (this.usePreview) {
+      return this.previewData.discountCent / 100;
+    }
+    return 0;
+  }
+
+  private getShippingAmount(): number {
+    if (this.usePreview) {
+      return this.previewData.shippingCent / 100;
+    }
+    return 0;
   }
 
   private getFinalPrice(): number {
+    if (this.usePreview) {
+      return this.previewData.payableCent / 100;
+    }
     const total = this.getTotalPrice();
     const discount = this.getDiscountAmount();
     const final = total - discount;
@@ -113,7 +600,8 @@ export struct CheckoutPage {
         .borderRadius(this.s(101))
         .margin({ top: this.s(16) })
         .onClick(() => {
-          this.hasAddress = true;
+          this.currentRoute = AppRoute.ADDRESS;
+          NavService.go(AppRoute.ADDRESS);
         });
     }
     .width('100%')
@@ -139,11 +627,11 @@ export struct CheckoutPage {
       }
 
       Column() {
-        Text('嘉小姐  13005634904')
+        Text(`${this.selectedAddress.recipient}  ${this.selectedAddress.phone}`)
           .fontSize(this.s(14))
           .fontColor('#4D716F')
           .fontWeight(FontWeight.Medium);
-        Text('广东省梅州市梅江区嘉应学院')
+        Text(`${this.selectedAddress.region} ${this.selectedAddress.detail}`)
           .fontSize(this.s(14))
           .fontColor('#4D716F')
           .margin({ top: this.s(4) });
@@ -161,7 +649,20 @@ export struct CheckoutPage {
     }
     .width('100%')
     .padding({ left: this.s(21), right: this.s(9), top: this.s(6), bottom: this.s(10) })
-    .alignItems(VerticalAlign.Center);
+    .alignItems(VerticalAlign.Center)
+    .onClick(() => {
+      this.currentRoute = AppRoute.ADDRESS;
+      NavService.go(AppRoute.ADDRESS);
+    });
+  }
+
+  @Builder
+  private LoadingAddressSection() {
+    Row()
+      .width('100%')
+      .height(this.s(60))
+      .padding({ left: this.s(21), right: this.s(9), top: this.s(6), bottom: this.s(10) })
+      .backgroundColor(Color.Transparent);
   }
 
   @Builder
@@ -196,21 +697,29 @@ export struct CheckoutPage {
         // Product row
         Row({ space: this.s(16) }) {
           // Product image
-          Image($r('app.media.checkout_product_sample'))
-            .width(this.s(76))
-            .height(this.s(73))
-            .borderRadius(this.s(6))
-            .objectFit(ImageFit.Cover);
+          if (this.displayItemImageUrl().length > 0) {
+            Image(this.displayItemImageUrl())
+              .width(this.s(76))
+              .height(this.s(73))
+              .borderRadius(this.s(6))
+              .objectFit(ImageFit.Cover);
+          } else {
+            Row()
+              .width(this.s(76))
+              .height(this.s(73))
+              .borderRadius(this.s(6))
+              .backgroundColor('rgba(255,255,255,0.3)');
+          }
 
           Column() {
-            Text('正宗特级会员制高山雪茶')
+            Text(this.displayItemName())
               .fontSize(this.s(16))
               .fontColor(Color.White)
               .fontWeight(FontWeight.Medium)
               .maxLines(1)
               .textOverflow({ overflow: TextOverflow.Ellipsis });
 
-            Text('规格：1盒/250g')
+            Text(this.displayItemSkuName())
               .fontSize(this.s(10))
               .fontColor(Color.White)
               .opacity(0.7)
@@ -219,11 +728,11 @@ export struct CheckoutPage {
             Blank();
 
             Row() {
-              Text('￥')
+              Text(this.displayItemPriceSymbol())
                 .fontSize(this.s(12))
                 .fontColor(Color.White)
                 .fontWeight(FontWeight.Bold);
-              Text('114.5')
+              Text(this.displayItemPriceAmount())
                 .fontSize(this.s(20))
                 .fontColor(Color.White)
                 .fontWeight(FontWeight.Bold);
@@ -238,19 +747,26 @@ export struct CheckoutPage {
                   .textAlign(TextAlign.Center)
                   .fontSize(this.s(14))
                   .fontColor(Color.White)
-                  .border({ width: 1, color: Color.White, radius: this.s(8) });
-                Text('1')
+                  .border({ width: 1, color: Color.White, radius: this.s(8) })
+                  .onClick(() => {
+                    this.setDisplayQuantity(this.quantityDisplay - 1);
+                  });
+                Text(`${this.quantityDisplay}`)
                   .width(this.s(24))
                   .textAlign(TextAlign.Center)
                   .fontSize(this.s(14))
-                  .fontColor(Color.White);
+                  .fontColor(Color.White)
+                  .key(`${this.quantityDisplay}`);
                 Text('+')
                   .width(this.s(20))
                   .height(this.s(17))
                   .textAlign(TextAlign.Center)
                   .fontSize(this.s(14))
                   .fontColor(Color.White)
-                  .border({ width: 1, color: Color.White, radius: this.s(8) });
+                  .border({ width: 1, color: Color.White, radius: this.s(8) })
+                  .onClick(() => {
+                    this.setDisplayQuantity(this.quantityDisplay + 1);
+                  });
               }
             }
             .width('100%')
@@ -351,7 +867,7 @@ export struct CheckoutPage {
           .fontColor('#4D716F')
           .fontWeight(FontWeight.Medium);
         Blank();
-        Text('￥114.5')
+        Text(`￥${this.getTotalPrice().toFixed(2)}`)
           .fontSize(this.s(14))
           .fontColor('#4D716F')
           .fontWeight(FontWeight.Medium);
@@ -379,7 +895,7 @@ export struct CheckoutPage {
           .fontSize(this.s(12))
           .fontColor('#4D716F')
           .opacity(0.7);
-        Text('-114.3')
+        Text(`-${this.getDiscountAmount().toFixed(2)}`)
           .fontSize(this.s(14))
           .fontColor('#71AD91')
           .fontWeight(FontWeight.Bold);
@@ -562,17 +1078,17 @@ export struct CheckoutPage {
               .fontSize(this.s(14))
               .fontColor('#333333')
               .fontWeight(FontWeight.Bold);
-            Text(`￥${this.getFinalPrice().toFixed(1)}`)
+            Text(`￥${this.getFinalPrice().toFixed(2)}`)
               .fontSize(this.s(14))
               .fontColor('#D85E53')
               .fontWeight(FontWeight.Bold);
-            Text(`（已优惠${this.getDiscountAmount()}）`)
+            Text(`（已优惠${this.getDiscountAmount().toFixed(2)}）`)
               .fontSize(this.s(12))
               .fontColor('#666666');
           }
           .alignItems(VerticalAlign.Bottom);
 
-          Text('含运费')
+          Text(this.getShippingAmount() > 0 ? `含运费￥${this.getShippingAmount().toFixed(2)}` : '含运费')
             .fontSize(this.s(12))
             .fontColor('#666666')
             .margin({ top: this.s(2) });
@@ -588,14 +1104,22 @@ export struct CheckoutPage {
             .width(this.s(98))
             .height(this.s(38))
             .borderRadius(this.s(4))
-            .objectFit(ImageFit.Fill);
-          Text('提交订单')
+            .objectFit(ImageFit.Fill)
+            .opacity(this.submitting ? 0.55 : 1);
+          Text(this.submitting ? '提交中...' : '提交订单')
             .fontSize(this.s(16))
             .fontColor(Color.White)
-            .fontWeight(FontWeight.Medium);
+            .fontWeight(FontWeight.Medium)
+            .opacity(this.submitting ? 0.7 : 1);
         }
         .width(this.s(98))
-        .height(this.s(38));
+        .height(this.s(38))
+        .onClick(() => {
+          if (this.submitting) {
+            return;
+          }
+          this.submitOrder();
+        });
       }
       .width('100%')
       .padding({
@@ -630,7 +1154,9 @@ export struct CheckoutPage {
       Scroll() {
         Column() {
           // Address section or No Address section
-          if (this.hasAddress) {
+          if (!this.addressLoaded || this.loadingAddress) {
+            this.LoadingAddressSection();
+          } else if (this.hasAddress) {
             this.AddressSection();
           } else {
             this.NoAddressSection();

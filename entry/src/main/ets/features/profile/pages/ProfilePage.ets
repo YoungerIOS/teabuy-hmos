@@ -1,11 +1,12 @@
 import { AppRoute } from '../../../router/RouteMap';
 import { NavService } from '../../../router/NavService';
+import { OrderRepository } from '../../order/data/OrderRepository';
 
 @Component
 export struct ProfilePage {
   @Link currentRoute: AppRoute;
   @State private contentWidth: number = 375;
-  @State private orderCount: number = 0;
+  @State @Watch('onOrderCountChange') private orderCount: number = OrderRepository.getCachedPendingCount();
   @State private favoriteCount: number = 0;
   @State private followCount: number = 0;
   private readonly baseWidth: number = 375;
@@ -25,6 +26,40 @@ export struct ProfilePage {
 
   private bottomPatternY(): number {
     return this.s(560) + this.bottomPatternHeight() * 0.2;
+  }
+
+  onOrderCountChange(): void {
+    console.log('orderCount changed to:', this.orderCount);
+  }
+
+  aboutToAppear(): void {
+    void this.loadOrderCount();
+  }
+
+  private async loadOrderCount(): Promise<void> {
+    try {
+      const summary = await OrderRepository.getTabSummary();
+      console.log('=== Order Summary Debug ===');
+      console.log('summary:', JSON.stringify(summary));
+      console.log('summary.items:', summary.items);
+      console.log('summary.items.length:', summary.items?.length);
+      
+      let total = 0;
+      if (summary.items && summary.items.length > 0) {
+        for (let i = 0; i < summary.items.length; i++) {
+          const item = summary.items[i];
+          console.log(`item[${i}]: status=${item.status}, count=${item.count}`);
+          if (item.status !== 'COMPLETED') {
+            total += item.count;
+          }
+        }
+      }
+      if (total !== this.orderCount) {
+        this.orderCount = total;
+      }
+    } catch (error) {
+      console.error('Failed to load order count:', error);
+    }
   }
 
   build() {
@@ -206,9 +241,60 @@ export struct ProfilePage {
           .objectFit(ImageFit.Fill);
 
         Row() {
-          this.OrderMetric(this.orderCount, '订单');
-          this.OrderMetric(this.favoriteCount, '收藏');
-          this.OrderMetric(this.followCount, '关注');
+          // 订单
+          Column() {
+            Text('订单')
+              .fontSize(this.s(14))
+              .fontColor('#FFFFFF')
+              .margin({ top: this.s(6) });
+            Text(`${this.orderCount}`)
+              .fontSize(this.s(24))
+              .fontWeight(FontWeight.Medium)
+              .fontColor('#FFFFFF')
+              .margin({ top: this.s(5) });
+          }
+          .width(this.s(112))
+          .height(this.s(113))
+          .justifyContent(FlexAlign.Center)
+          .alignItems(HorizontalAlign.Center)
+          .onClick(() => {
+            this.currentRoute = AppRoute.ORDER_LIST;
+            NavService.go(AppRoute.ORDER_LIST);
+          });
+
+          // 收藏
+          Column() {
+            Text('收藏')
+              .fontSize(this.s(14))
+              .fontColor('#FFFFFF')
+              .margin({ top: this.s(6) });
+            Text(`${this.favoriteCount}`)
+              .fontSize(this.s(24))
+              .fontWeight(FontWeight.Medium)
+              .fontColor('#FFFFFF')
+              .margin({ top: this.s(5) });
+          }
+          .width(this.s(112))
+          .height(this.s(113))
+          .justifyContent(FlexAlign.Center)
+          .alignItems(HorizontalAlign.Center);
+
+          // 关注
+          Column() {
+            Text('关注')
+              .fontSize(this.s(14))
+              .fontColor('#FFFFFF')
+              .margin({ top: this.s(6) });
+            Text(`${this.followCount}`)
+              .fontSize(this.s(24))
+              .fontWeight(FontWeight.Medium)
+              .fontColor('#FFFFFF')
+              .margin({ top: this.s(5) });
+          }
+          .width(this.s(112))
+          .height(this.s(113))
+          .justifyContent(FlexAlign.Center)
+          .alignItems(HorizontalAlign.Center);
         }
         .width(this.s(338))
         .justifyContent(FlexAlign.SpaceEvenly)
@@ -227,7 +313,7 @@ export struct ProfilePage {
         .fontSize(this.s(14))
         .fontColor('#FFFFFF')
         .margin({ top: this.s(6) });
-      Text(value.toString())
+      Text(`${value}`)
         .fontSize(this.s(24))
         .fontWeight(FontWeight.Medium)
         .fontColor('#FFFFFF')
@@ -236,7 +322,13 @@ export struct ProfilePage {
     .width(this.s(112))
     .height(this.s(113))
     .justifyContent(FlexAlign.Center)
-    .alignItems(HorizontalAlign.Center);
+    .alignItems(HorizontalAlign.Center)
+    .onClick(() => {
+      if (label === '订单') {
+        this.currentRoute = AppRoute.ORDER_LIST;
+        NavService.go(AppRoute.ORDER_LIST);
+      }
+    });
   }
 
   @Builder

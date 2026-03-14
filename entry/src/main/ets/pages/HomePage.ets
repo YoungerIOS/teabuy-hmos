@@ -3,6 +3,7 @@ import { LoginPage } from '../features/auth/pages/LoginPage';
 import { UserStore } from '../core/store/UserStore';
 import { AppRoute } from '../router/RouteMap';
 import { NavService } from '../router/NavService';
+import { CartStorage } from '../features/cart/data/CartStorage';
 
 @Entry
 @Component
@@ -10,9 +11,14 @@ struct HomePage {
   @State private isLoggedIn: boolean = false;
   @State private currentRoute: AppRoute = AppRoute.HOME;
   @State private activeNav: number = 0;
+  @State private cartBootstrapped: boolean = false;
 
   aboutToAppear(): void {
     this.isLoggedIn = UserStore.isLoggedIn();
+    if (!this.cartBootstrapped) {
+      this.cartBootstrapped = true;
+      void CartStorage.bootstrap(getContext(this));
+    }
   }
 
   onBackPress(): boolean {

@@ -1,5 +1,11 @@
 import { AppRoute } from '../../../router/RouteMap';
 import { NavService } from '../../../router/NavService';
+import { RouteParams } from '../../../router/RouteParams';
+import { CartItem } from '../../cart/data/CartRepository';
+import { CartRemoteRepository } from '../../cart/data/CartRemoteRepository';
+import { CartStorage } from '../../cart/data/CartStorage';
+import { HomeRepository, ProductDetailData, ProductSkuItem, FeaturedListCard } from '../../home/data/HomeRepository';
+import { promptAction } from '@kit.ArkUI';
 
 interface ReviewItem {
   name: string;
@@ -9,11 +15,22 @@ interface ReviewItem {
   avatar: Resource;
 }
 
+class PriceParts {
+  symbol: string = '';
+  amount: string = '';
+  unit: string = '';
+}
+
 @Component
 export struct ProductDetailPage {
   @Link currentRoute: AppRoute;
   @State private pageWidth: number = 375;
   @State private activeTab: number = 0; // 0: 商品 1: 详情 2: 评价
+  @State private productId: string = '';
+  @State private productDetail: ProductDetailData = new ProductDetailData();
+  @State private fallbackName: string = '';
+  @State private fallbackPriceText: string = '';
+  @State private fallbackImageUrl: string = '';
 
   private s(value: number): number {
     return value * this.pageWidth / 375;
@@ -36,6 +53,143 @@ export struct ProductDetailPage {
         avatar: $r('app.media.profile_interest_avatar_2_3x')
       } as ReviewItem
     ];
+  }
+
+  aboutToAppear(): void {
+    const params = NavService.getParams();
+    if (params && params.productId) {
+      this.productId = params.productId;
+    }
+    if (params && params.name) {
+      this.fallbackName = params.name;
+    }
+    if (params && params.priceText) {
+      this.fallbackPriceText = params.priceText;
+    }
+    if (params && params.imageUrl) {
+      this.fallbackImageUrl = params.imageUrl;
+    }
+
+    if (this.productId.length > 0) {
+      this.loadProductDetail();
+    }
+  }
+
+  private async loadProductDetail(): Promise<void> {
+    try {
+      const detail = await HomeRepository.getProductDetail(this.productId);
+      this.productDetail = detail;
+    } catch (error) {
+      console.error('Failed to load product detail:', error);
+    }
+  }
+
+  private getPrimarySku(): ProductSkuItem | undefined {
+    return this.productDetail.skus.length > 0 ? this.productDetail.skus[0] : undefined;
+  }
+
+  private displayPriceText(): string {
+    const sku = this.getPrimarySku();
+    if (sku && sku.priceText.length > 0) {
+      return sku.priceText;
+    }
+    return this.fallbackPriceText;
+  }
+
+  private displayName(): string {
+    return this.productDetail.name.length > 0 ? this.productDetail.name : this.fallbackName;
+  }
+
+  private displaySubtitle(): string {
+    if (this.productDetail.subtitle.length > 0) {
+      return this.productDetail.subtitle;
+    }
+    return this.productDetail.description;
+  }
+
+  private displayImageUrl(): string {
+    if (this.productDetail.mainImageUrl.length > 0) {
+      return this.productDetail.mainImageUrl;
+    }
+    if (this.productDetail.images.length > 0) {
+      return this.productDetail.images[0];
+    }
+    return this.fallbackImageUrl;
+  }
+
+  private displaySoldCount(): number {
+    return this.productDetail.soldCount > 0 ? this.productDetail.soldCount : 0;
+  }
+
+  private addToCart(): void {
+    const card = this.buildCartCard();
+    const existing: CartItem[] = AppStorage.get<CartItem[]>('cartItems') || [];
+    const index = existing.findIndex((item: CartItem) => {
+      if (card.id && card.id.length > 0 && item.product.id && item.product.id.length > 0) {
+        return item.product.id === card.id;
+      }
+      return item.product.name ? item.product.name === card.name : false;
+    });
+    if (index >= 0) {
+      const updated = existing[index];
+      existing[index] = new CartItem(updated.id, updated.product, updated.quantity + 1, updated.selected);
+    } else {
+      const id = card.id && card.id.length > 0 ? card.id : Date.now().toString();
+      existing.push(new CartItem(id, card, 1, false));
+    }
+    CartStorage.update([...existing]);
+
+    const sku = this.getPrimarySku();
+    if (sku) {
+      void CartRemoteRepository.addItem(sku.id, 1).catch((error: Error) => {
+        console.error('Failed to add cart item remotely:', error);
+      });
+    } else {
+      promptAction.showToast({ message: '缺少SKU，无法加入购物车' });
+    }
+    promptAction.showToast({ message: '已加入购物车' });
+  }
+
+  private parsePriceText(priceText: string): PriceParts {
+    const parts = new PriceParts();
+    const match = priceText.match(/^([^0-9]*)([0-9.]+)(.*)$/);
+    if (match) {
+      parts.symbol = match[1] || '';
+      parts.amount = match[2] || '';
+      parts.unit = match[3] || '';
+      return parts;
+    }
+    parts.amount = priceText;
+    return parts;
+  }
+
+  private buildCartCard(): FeaturedListCard {
+    const card = new FeaturedListCard();
+    const sku = this.getPrimarySku();
+    card.id = this.productDetail.id.length > 0 ? this.productDetail.id : this.productId;
+    if (sku) {
+      card.skuId = sku.id;
+    }
+    card.name = this.displayName();
+    card.subtitle = this.displaySubtitle();
+    card.imageUrl = this.displayImageUrl();
+    card.priceText = this.displayPriceText();
+    card.soldCountText = this.displaySoldCount() > 0 ? `${this.displaySoldCount()}人买过` : '';
+    card.badgePrimary = this.productDetail.badgePrimary;
+    card.badgeSecondary = this.productDetail.badgeSecondary;
+    return card;
+  }
+
+  private displayPriceSymbol(): string {
+    return this.parsePriceText(this.displayPriceText()).symbol;
+  }
+
+  private displayPriceAmount(): string {
+    return this.parsePriceText(this.displayPriceText()).amount;
+  }
+
+  private displayPriceUnit(): string {
+    return this.parsePriceText(this.displayPriceText()).unit;
   }
 
   @Builder
@@ -126,29 +280,31 @@ export struct ProductDetailPage {
         Column() {
           Row() {
             Row() {
-              Text('￥')
+              Text(this.displayPriceSymbol())
                 .fontSize(this.s(16))
                 .fontColor('#D85E53')
                 .fontWeight(FontWeight.Bold)
                 .margin({ top: this.s(11) });
 
-              Text('114')
+              Text(this.displayPriceAmount())
                 .fontSize(this.s(39))
                 .fontColor('#D85E53')
                 .fontWeight(FontWeight.Bold)
                 .margin({ left: this.s(1) });
 
-              Text('/盒')
-                .fontSize(this.s(16))
-                .fontColor('#D85E53')
-                .fontWeight(FontWeight.Bold)
-                .margin({ top: this.s(11), left: this.s(1) });
+              if (this.displayPriceUnit().length > 0) {
+                Text(this.displayPriceUnit())
+                  .fontSize(this.s(16))
+                  .fontColor('#D85E53')
+                  .fontWeight(FontWeight.Bold)
+                  .margin({ top: this.s(11), left: this.s(1) });
+              }
             }
             .alignItems(VerticalAlign.Bottom);
 
             Blank();
 
-            Text('月销1145+')
+            Text(this.displaySoldCount() > 0 ? `月销${this.displaySoldCount()}+` : '')
               .fontSize(this.s(14))
               .fontColor('#B9B9B9')
               .margin({ bottom: this.s(6) });
@@ -156,7 +312,7 @@ export struct ProductDetailPage {
           .width('100%')
           .alignItems(VerticalAlign.Bottom);
 
-          Text('新品 首发茶话小专区清新雨露特级铁观音\n小包装袋盒装500g秋茶')
+          Text(this.displayName().length > 0 ? `${this.displayName()}${this.displaySubtitle().length > 0 ? '\n' + this.displaySubtitle() : ''}` : '')
             .fontSize(this.s(34 / 3))
             .fontColor('#4D716F')
             .lineHeight(this.s(20))
@@ -193,7 +349,7 @@ export struct ProductDetailPage {
 
             Blank();
 
-            Text('已售1818')
+            Text(this.displaySoldCount() > 0 ? `已售${this.displaySoldCount()}` : '')
               .fontSize(this.s(10))
               .fontColor('#9E9E9E');
           }
@@ -216,11 +372,19 @@ export struct ProductDetailPage {
       .shadow({ radius: 8, color: 'rgba(77,113,111,0.2)', offsetX: 0, offsetY: 4 });
 
       Stack({ alignContent: Alignment.TopEnd }) {
-        Image('https://nfzznasyztaontqmuhjq.supabase.co/storage/v1/object/public/product-images/home/home_review_bg_1.png?v=4')
-          .width('100%')
-          .height(this.s(183))
-          .objectFit(ImageFit.Cover)
-          .borderRadius(this.s(10));
+        if (this.displayImageUrl().length > 0) {
+          Image(this.displayImageUrl())
+            .width('100%')
+            .height(this.s(183))
+            .objectFit(ImageFit.Cover)
+            .borderRadius(this.s(10));
+        } else {
+          Row()
+            .width('100%')
+            .height(this.s(183))
+            .borderRadius(this.s(10))
+            .backgroundColor('#DDE7E2');
+        }
 
         Image($r('app.media.product_badge_sales_component_3x'))
           .width(this.s(33))
@@ -541,7 +705,7 @@ export struct ProductDetailPage {
             .height(this.s(58))
             .justifyContent(FlexAlign.Center)
             .onClick(() => {
-              this.currentRoute = AppRoute.CART;
+              this.addToCart();
             });
 
             Row() {
@@ -553,8 +717,42 @@ export struct ProductDetailPage {
             .width(this.s(123))
             .height(this.s(58))
             .justifyContent(FlexAlign.Center)
-            .onClick(() => {
+            .onClick(async () => {
+              const card = this.buildCartCard();
+              const existing: CartItem[] = AppStorage.get<CartItem[]>('cartItems') || [];
+              for (let i = 0; i < existing.length; i++) {
+                existing[i].selected = false;
+              }
+              const index = existing.findIndex((item: CartItem) => {
+                if (card.id && card.id.length > 0 && item.product.id && item.product.id.length > 0) {
+                  return item.product.id === card.id;
+                }
+                return item.product.name ? item.product.name === card.name : false;
+              });
+              if (index >= 0) {
+                existing[index].quantity = 1;
+                existing[index].selected = true;
+                existing[index].product = card;
+              } else {
+                const id = card.id && card.id.length > 0 ? card.id : Date.now().toString();
+                existing.push(new CartItem(id, card, 1, true));
+              }
+              CartStorage.update([...existing]);
+              const routeParams = new RouteParams();
+              if (this.productId.length > 0) {
+                routeParams.productId = this.productId;
+              }
+              const sku = this.getPrimarySku();
+              if (sku) {
+                routeParams.skuId = sku.id;
+              }
               this.currentRoute = AppRoute.CHECKOUT;
+              NavService.go(AppRoute.CHECKOUT, routeParams);
+              if (sku) {
+                void CartRemoteRepository.addItem(sku.id, 1).catch((error: Error) => {
+                  console.error('Failed to add cart item remotely:', error);
+                });
+              }
             });
           }
           .width(this.s(239))
