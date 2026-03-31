@@ -163,6 +163,8 @@ export struct ProfilePage {
       .justifyContent(FlexAlign.Start)
       .alignItems(VerticalAlign.Center)
       .onClick(() => {
+        this.currentRoute = AppRoute.NOTIFICATION;
+        NavService.go(AppRoute.NOTIFICATION);
       });
 
       Column() {

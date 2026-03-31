@@ -3,13 +3,14 @@ import { NavService } from '../../../router/NavService';
 import { RouteParams } from '../../../router/RouteParams';
 import { Colors } from '../../../core/ui/theme/Tokens';
 import { CartItem } from '../data/CartRepository';
-import { CartRecommendationItem, CartRemoteRepository } from '../data/CartRemoteRepository';
+import { CartRemoteRepository } from '../data/CartRemoteRepository';
 import { CartStorage } from '../data/CartStorage';
 import { FeaturedListCard } from '../../home/data/HomeRepository';
 
 @Component
 export struct CartPage {
   @Link currentRoute: AppRoute;
+  @Link activeNav: number;
   @StorageLink('cartItems') cartItems: CartItem[] = [];
 
   // TODO: we should pull actual content width or just define it.
@@ -17,8 +18,7 @@ export struct CartPage {
   @State private activeDeletePopupIndex: number = -1;
   @State private cartRevision: number = 0;
   @State private isSelectMode: boolean = false; // 多选模式
-  @State private recommendProducts: FeaturedListCard[] = [];
-  @State private recommendLoaded: boolean = false;
+  @StorageLink('cartRecommendations') recommendProducts: FeaturedListCard[] = [];
 
   private cartScale(value: number): number {
     return value * this.homeContentWidth / 375;
@@ -27,7 +27,7 @@ export struct CartPage {
   aboutToAppear(): void {
     // 页面显示时,取消所有商品的选中状态
     this.clearAllSelections();
-    void this.loadRecommendProducts();
+    void CartStorage.refreshRecommendations(getContext(this));
   }
 
   private clearAllSelections(): void {
@@ -39,35 +39,6 @@ export struct CartPage {
 
   private getRecommendProducts(): FeaturedListCard[] {
     return this.recommendProducts;
-  }
-
-  private mapRecommendProducts(items: CartRecommendationItem[]): FeaturedListCard[] {
-    const mapped: FeaturedListCard[] = [];
-    for (let i = 0; i < items.length; i++) {
-      const source = items[i];
-      const card = new FeaturedListCard();
-      card.id = source.id;
-      card.name = source.name;
-      card.subtitle = source.subtitle;
-      card.imageUrl = source.imageUrl;
-      card.priceText = source.priceText;
-      card.skuId = source.defaultSkuId;
-      mapped.push(card);
-    }
-    return mapped;
-  }
-
-  private async loadRecommendProducts(): Promise<void> {
-    try {
-      const remote = await CartRemoteRepository.getCart();
-      const items = remote.recommendations || [];
-      this.recommendProducts = this.mapRecommendProducts(items);
-      this.recommendLoaded = true;
-    } catch (error) {
-      console.error('Failed to load cart recommendations:', error);
-      this.recommendProducts = [];
-      this.recommendLoaded = true;
-    }
   }
 
   @Builder
@@ -144,7 +115,9 @@ export struct CartPage {
           .backgroundColor(Colors.cardBackground)
           .border({ width: 1, color: Colors.brandAccent, radius: this.cartScale(18) })
           .onClick(() => {
+            this.activeNav = 0;
             this.currentRoute = AppRoute.HOME;
+            NavService.go(AppRoute.HOME);
           });
 
         // Recommend section in empty cart
@@ -575,7 +548,7 @@ export struct CartPage {
 
   @Builder
   private RecommendSection() {
-    if (this.recommendLoaded && this.getRecommendProducts().length > 0) {
+    if (this.getRecommendProducts().length > 0) {
       Column() {
       // Title row: flourish + 为您推荐 + flourish
       Row() {

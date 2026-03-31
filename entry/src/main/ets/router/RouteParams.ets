@@ -12,6 +12,10 @@ export class RouteParams {
   orderNo: string = '';
   totalCent: string = '';
   paymentRequired: string = '';
+  notificationId: string = '';
+  notificationTitle: string = '';
+  notificationContent: string = '';
+  notificationCreatedAt: string = '';
 
   static fromObject(source?: Record<string, string>): RouteParams {
     const params = new RouteParams();
@@ -56,6 +60,18 @@ export class RouteParams {
     }
     if (source.paymentRequired) {
       params.paymentRequired = source.paymentRequired;
+    }
+    if (source.notificationId) {
+      params.notificationId = source.notificationId;
+    }
+    if (source.notificationTitle) {
+      params.notificationTitle = source.notificationTitle;
+    }
+    if (source.notificationContent) {
+      params.notificationContent = source.notificationContent;
+    }
+    if (source.notificationCreatedAt) {
+      params.notificationCreatedAt = source.notificationCreatedAt;
     }
     return params;
   }

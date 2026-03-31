@@ -10,6 +10,8 @@ export enum AppRoute {
   PAYMENT_SUCCESS = 'payment_success',
   ORDER_LIST = 'order_list',
   ADDRESS = 'address',
+  NOTIFICATION = 'notification',
+  NOTIFICATION_DETAIL = 'notification_detail',
   REVIEW_LIST = 'review_list',
   REVIEW_DETAIL = 'review_detail',
   PROFILE = 'profile',

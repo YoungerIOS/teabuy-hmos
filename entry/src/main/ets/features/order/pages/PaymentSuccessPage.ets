@@ -84,8 +84,9 @@ export struct PaymentSuccessPage {
     Row() {
       Row() {
         Image($rawfile('ic_checkout_back.svg'))
-          .width(this.s(10))
-          .height(this.s(19));
+          .width(this.s(14))
+          .height(this.s(14))
+          .objectFit(ImageFit.Contain);
       }
       .width(this.s(36))
       .height(this.s(36))

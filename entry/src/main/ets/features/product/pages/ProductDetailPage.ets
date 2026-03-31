@@ -31,6 +31,7 @@ export struct ProductDetailPage {
   @State private fallbackName: string = '';
   @State private fallbackPriceText: string = '';
   @State private fallbackImageUrl: string = '';
+  @State private addedToCart: boolean = false;
 
   private s(value: number): number {
     return value * this.pageWidth / 375;
@@ -73,12 +74,14 @@ export struct ProductDetailPage {
     if (this.productId.length > 0) {
       this.loadProductDetail();
     }
+    this.syncAddedToCart();
   }
 
   private async loadProductDetail(): Promise<void> {
     try {
       const detail = await HomeRepository.getProductDetail(this.productId);
       this.productDetail = detail;
+      this.syncAddedToCart();
     } catch (error) {
       console.error('Failed to load product detail:', error);
     }
@@ -124,12 +127,7 @@ export struct ProductDetailPage {
   private addToCart(): void {
     const card = this.buildCartCard();
     const existing: CartItem[] = AppStorage.get<CartItem[]>('cartItems') || [];
-    const index = existing.findIndex((item: CartItem) => {
-      if (card.id && card.id.length > 0 && item.product.id && item.product.id.length > 0) {
-        return item.product.id === card.id;
-      }
-      return item.product.name ? item.product.name === card.name : false;
-    });
+    const index = this.findCartIndex(card, existing);
     if (index >= 0) {
       const updated = existing[index];
       existing[index] = new CartItem(updated.id, updated.product, updated.quantity + 1, updated.selected);
@@ -148,6 +146,22 @@ export struct ProductDetailPage {
       promptAction.showToast({ message: '缺少SKU，无法加入购物车' });
     }
     promptAction.showToast({ message: '已加入购物车' });
+    this.addedToCart = true;
+  }
+
+  private findCartIndex(card: FeaturedListCard, items: CartItem[]): number {
+    return items.findIndex((item: CartItem) => {
+      if (card.id && card.id.length > 0 && item.product.id && item.product.id.length > 0) {
+        return item.product.id === card.id;
+      }
+      return item.product.name ? item.product.name === card.name : false;
+    });
+  }
+
+  private syncAddedToCart(): void {
+    const card = this.buildCartCard();
+    const existing: CartItem[] = AppStorage.get<CartItem[]>('cartItems') || [];
+    this.addedToCart = this.findCartIndex(card, existing) >= 0;
   }
 
   private parsePriceText(priceText: string): PriceParts {
@@ -696,7 +710,7 @@ export struct ProductDetailPage {
 
           Row() {
             Row() {
-              Text('加入购物车')
+              Text(this.addedToCart ? '去购物车' : '加入购物车')
                 .fontSize(this.s(16))
                 .fontColor(Color.White)
                 .fontWeight(FontWeight.Medium);
@@ -705,6 +719,11 @@ export struct ProductDetailPage {
             .height(this.s(58))
             .justifyContent(FlexAlign.Center)
             .onClick(() => {
+              if (this.addedToCart) {
+                this.currentRoute = AppRoute.CART;
+                NavService.go(AppRoute.CART);
+                return;
+              }
               this.addToCart();
             });
 

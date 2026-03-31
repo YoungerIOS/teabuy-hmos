@@ -2,7 +2,7 @@ import preferences from '@ohos.data.preferences';
 import Context from '@ohos.app.ability.common';
 import { CartItem } from './CartRepository';
 import { FeaturedListCard } from '../../home/data/HomeRepository';
-import { CartRemoteData, CartRemoteItem, CartRemoteRepository } from './CartRemoteRepository';
+import { CartRecommendationItem, CartRemoteData, CartRemoteItem, CartRemoteRepository } from './CartRemoteRepository';
 import { UserStore } from '../../../core/store/UserStore';
 
 class ProductDTO {
@@ -24,13 +24,28 @@ class CartItemDTO {
   product: ProductDTO = new ProductDTO();
 }
 
+class RecommendationDTO {
+  id: string = '';
+  skuId: string = '';
+  name: string = '';
+  subtitle: string = '';
+  imageUrl: string = '';
+  priceText: string = '';
+}
+
 export class CartStorage {
   private static readonly prefName: string = 'teabuy_cache';
   private static readonly cartKey: string = 'cartItems';
+  private static readonly recommendKey: string = 'cartRecommendations';
+  private static readonly recommendUpdatedAtKey: string = 'cartRecommendationsUpdatedAt';
+  private static readonly recommendTtlMs: number = 10 * 60 * 1000;
+  private static readonly recommendMinRefreshIntervalMs: number = 60 * 1000;
   private static prefs: preferences.Preferences | null = null;
   private static appContext: Context | null = null;
   private static bootstrapped: boolean = false;
   private static remoteIdBySku: Map<string, string> = new Map();
+  private static recommendFetchInFlight: boolean = false;
+  private static lastRecommendFetchAt: number = 0;
 
   static async bootstrap(context: Context): Promise<void> {
     if (CartStorage.bootstrapped) {
@@ -42,6 +57,8 @@ export class CartStorage {
     if (cached.length > 0) {
       CartStorage.setAppStorage(cached);
     }
+    const cachedRecommendations = await CartStorage.loadRecommendations(context);
+    CartStorage.setRecommendationStorage(cachedRecommendations);
     if (UserStore.isLoggedIn()) {
       await CartStorage.syncRemote(context);
     }
@@ -52,6 +69,7 @@ export class CartStorage {
       const cached = await CartStorage.load(context);
       const remote = await CartRemoteRepository.getCart();
       CartStorage.updateRemoteIndex(remote);
+      await CartStorage.updateRecommendationsCache(context, remote.recommendations || []);
       if (cached.length === 0) {
         const mapped = CartStorage.fromRemote(remote);
         CartStorage.setAppStorage(mapped);
@@ -99,6 +117,7 @@ export class CartStorage {
 
       const refreshed = await CartRemoteRepository.getCart();
       CartStorage.updateRemoteIndex(refreshed);
+      await CartStorage.updateRecommendationsCache(context, refreshed.recommendations || []);
       const mapped = CartStorage.fromRemote(refreshed);
       CartStorage.setAppStorage(mapped);
       await CartStorage.save(context, mapped);
@@ -112,6 +131,8 @@ export class CartStorage {
     CartStorage.setAppStorage(normalized);
     if (CartStorage.appContext) {
       void CartStorage.save(CartStorage.appContext, normalized);
+      void CartStorage.invalidateRecommendations(CartStorage.appContext);
+      void CartStorage.refreshRecommendations(CartStorage.appContext, true);
     }
   }
 
@@ -149,6 +170,10 @@ export class CartStorage {
 
   private static setAppStorage(items: CartItem[]): void {
     AppStorage.setOrCreate('cartItems', items);
+  }
+
+  private static setRecommendationStorage(items: FeaturedListCard[]): void {
+    AppStorage.setOrCreate('cartRecommendations', items);
   }
 
   private static clone(items: CartItem[]): CartItem[] {
@@ -200,6 +225,52 @@ export class CartStorage {
     });
   }
 
+  private static toRecommendationDTO(items: FeaturedListCard[]): RecommendationDTO[] {
+    return items.map(item => {
+      const dto = new RecommendationDTO();
+      dto.id = item.id || '';
+      dto.skuId = item.skuId || '';
+      dto.name = item.name || '';
+      dto.subtitle = item.subtitle || '';
+      dto.imageUrl = item.imageUrl || '';
+      dto.priceText = item.priceText || '';
+      return dto;
+    });
+  }
+
+  private static fromRecommendationDTO(items: RecommendationDTO[]): FeaturedListCard[] {
+    return items.map(dto => {
+      const card = new FeaturedListCard();
+      card.id = dto.id;
+      card.skuId = dto.skuId;
+      card.name = dto.name;
+      card.subtitle = dto.subtitle;
+      card.imageUrl = dto.imageUrl;
+      card.priceText = dto.priceText;
+      return card;
+    });
+  }
+
+  private static mapRecommendations(items: CartRecommendationItem[]): FeaturedListCard[] {
+    return items.map(item => {
+      const card = new FeaturedListCard();
+      card.id = item.id;
+      card.name = item.name;
+      card.subtitle = item.subtitle;
+      card.imageUrl = item.imageUrl;
+      card.priceText = item.priceText;
+      card.skuId = item.defaultSkuId;
+      return card;
+    });
+  }
+
+  private static async updateRecommendationsCache(context: Context, items: CartRecommendationItem[]): Promise<void> {
+    const mapped = CartStorage.mapRecommendations(items);
+    CartStorage.setRecommendationStorage(mapped);
+    await CartStorage.saveRecommendations(context, mapped);
+    await CartStorage.saveRecommendationsUpdatedAt(context, Date.now());
+  }
+
   static fromRemote(remote: CartRemoteData): CartItem[] {
     return remote.items.map(item => {
       const card = new FeaturedListCard();
@@ -228,6 +299,64 @@ export class CartStorage {
     }
   }
 
+  static async loadRecommendations(context: Context): Promise<FeaturedListCard[]> {
+    try {
+      const prefs = await CartStorage.getPrefs(context);
+      const raw = await prefs.get(CartStorage.recommendKey, '') as string;
+      if (!raw || raw.length === 0) {
+        return [];
+      }
+      const parsed = JSON.parse(raw) as RecommendationDTO[];
+      return CartStorage.fromRecommendationDTO(parsed);
+    } catch (error) {
+      console.error('Failed to load recommendation cache:', error);
+      return [];
+    }
+  }
+
+  private static async loadRecommendationsUpdatedAt(context: Context): Promise<number> {
+    try {
+      const prefs = await CartStorage.getPrefs(context);
+      const value = await prefs.get(CartStorage.recommendUpdatedAtKey, 0) as number;
+      return typeof value === 'number' ? value : 0;
+    } catch (error) {
+      console.error('Failed to load recommendation updatedAt:', error);
+      return 0;
+    }
+  }
+
+  private static async saveRecommendationsUpdatedAt(context: Context, value: number): Promise<void> {
+    try {
+      const prefs = await CartStorage.getPrefs(context);
+      await prefs.put(CartStorage.recommendUpdatedAtKey, value);
+      await prefs.flush();
+    } catch (error) {
+      console.error('Failed to save recommendation updatedAt:', error);
+    }
+  }
+
+  static async invalidateRecommendations(context: Context): Promise<void> {
+    await CartStorage.saveRecommendationsUpdatedAt(context, 0);
+  }
+
+  private static async shouldRefreshRecommendations(context: Context, force: boolean): Promise<boolean> {
+    if (CartStorage.recommendFetchInFlight) {
+      return false;
+    }
+    const now = Date.now();
+    if (now - CartStorage.lastRecommendFetchAt < CartStorage.recommendMinRefreshIntervalMs) {
+      return false;
+    }
+    if (force) {
+      return true;
+    }
+    const updatedAt = await CartStorage.loadRecommendationsUpdatedAt(context);
+    if (updatedAt <= 0) {
+      return true;
+    }
+    return now - updatedAt > CartStorage.recommendTtlMs;
+  }
+
   static async save(context: Context, items: CartItem[]): Promise<void> {
     try {
       const prefs = await CartStorage.getPrefs(context);
@@ -236,6 +365,35 @@ export class CartStorage {
       await prefs.flush();
     } catch (error) {
       console.error('Failed to save cart cache:', error);
+    }
+  }
+
+  static async saveRecommendations(context: Context, items: FeaturedListCard[]): Promise<void> {
+    try {
+      const prefs = await CartStorage.getPrefs(context);
+      const dto = CartStorage.toRecommendationDTO(items);
+      await prefs.put(CartStorage.recommendKey, JSON.stringify(dto));
+      await prefs.flush();
+    } catch (error) {
+      console.error('Failed to save recommendation cache:', error);
+    }
+  }
+
+  static async refreshRecommendations(context: Context, force: boolean = false): Promise<void> {
+    const shouldRefresh = await CartStorage.shouldRefreshRecommendations(context, force);
+    if (!shouldRefresh) {
+      return;
+    }
+    CartStorage.recommendFetchInFlight = true;
+    CartStorage.lastRecommendFetchAt = Date.now();
+    try {
+      const remote = await CartRemoteRepository.getCart();
+      CartStorage.updateRemoteIndex(remote);
+      await CartStorage.updateRecommendationsCache(context, remote.recommendations || []);
+    } catch (error) {
+      console.error('Failed to refresh cart recommendations:', error);
+    } finally {
+      CartStorage.recommendFetchInFlight = false;
     }
   }
 }

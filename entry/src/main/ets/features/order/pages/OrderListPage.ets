@@ -127,8 +127,8 @@ export struct OrderListPage {
     Row() {
       Row() {
         Image($rawfile('ic_checkout_back.svg'))
-          .width(this.s(20))
-          .height(this.s(38))
+          .width(this.s(14))
+          .height(this.s(14))
           .objectFit(ImageFit.Contain);
       }
       .width(this.s(36))
